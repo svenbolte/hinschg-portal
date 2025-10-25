@@ -1,8 +1,19 @@
 <?php
 /**
- * Plugin Name: HinSchG Portal (Multi-Mandant)
- * Description: Hinweisgeberschutz-Portal mit Mandantenverwaltung (8-stellige ID via URL-Parameter mandant=XXXXXXXX) und anonymer Hinweisabgabe.
- * Version: 1.2.1
+Plugin Name: HinSchG Portal (Multi-Mandant)
+Description: Hinweisgeberschutz-Portal mit Mandantenverwaltung (8-stellige ID via URL-Parameter mandant=XXXXXXXX) und anonymer Hinweisabgabe.
+Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
+Author: ChatGPT and PBMod
+Author URI: https://github.com/svenbolte/
+Plugin URI: https://github.com/svenbolte/hinschg-portal/
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Version: 1.2.3
+Requires at least: 6.0
+Tested up to: 6.8.3
+Requires PHP: 8.2
+Stable tag: 1.2.3
+
  * Author: Patrick & GPT-5 Thinking
  * Text Domain: hinschg-portal
  */

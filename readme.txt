@@ -5,12 +5,13 @@ Author: ChatGPT and PBMod
 Author URI: https://github.com/svenbolte/
 Plugin URI: https://github.com/svenbolte/hinschg-portal/
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
+License: GPLv2 or later
+License URI: https://www.gnu.org/licenses/gpl-2.0.html
+Version: 1.2.3
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
 Stable tag: 1.2.3
-License: GPLv2 or later
-License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
 Ein Multi-Mandanten-Hinweisgeberschutz-Portal gemäß HinSchG (Hinweisgeberschutzgesetz) zur sicheren, vertraulichen und anonymen Entgegennahme von Hinweisen.
 
@@ -34,12 +35,13 @@ Das HinSchG Portal (Multi-Mandant) ist ein WordPress-Plugin zur Umsetzung der An
 3. Im Admin-Menü „HinSchG Portal“ öffnen.
 4. Mandanten anlegen und Shortcode [hinweisportal] verwenden.
 
-Den Link an die Mandanten weitergeben, z. B.: https://www.domain.de/hinweisportal/?mandant=12345678
+```markdown
+**Beispiel-Link für Mandanten:** `https://www.domain.de/hinweisportal/?mandant=12345678`
 
 
 == Nutzung ==
 
-**Shortcode:** [hinweisportal]
+``` **Shortcode:** [hinweisportal] ```
 
 *Erwartet den URL-Parameter `mandant=XXXXXXXX` (8-stellige Nummer).*
 
