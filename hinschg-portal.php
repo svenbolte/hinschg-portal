@@ -8,20 +8,18 @@ Author URI: https://github.com/svenbolte/
 Plugin URI: https://github.com/svenbolte/hinschg-portal/
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
-Version: 1.2.3
+Version: 1.2.4
+Stable tag: 1.2.4
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
-Stable tag: 1.2.3
-
- * Author: Patrick & GPT-5 Thinking
- * Text Domain: hinschg-portal
- */
+Text Domain: hinschg-portal
+**/
 
 if (!defined('ABSPATH')) { exit; }
 
 class HinSchG_Portal {
-    const DB_VERSION = '1.0.0';
+    const DB_VERSION = '1.2.4';
     const OPTION_KEY = 'hinschg_portal_options';
     const NONCE_ACTION = 'hinschg_portal_action';
 
@@ -39,7 +37,7 @@ class HinSchG_Portal {
         add_action('admin_menu', [$this, 'register_admin_menu']);
         
         add_action('admin_menu', [$this, 'register_legal_page']);
-add_action('admin_post_hinschg_save_mandant', [$this, 'handle_save_mandant']);
+		add_action('admin_post_hinschg_save_mandant', [$this, 'handle_save_mandant']);
         add_action('admin_post_hinschg_delete_mandant', [$this, 'handle_delete_mandant']);
         add_shortcode('hinweisportal', [$this, 'shortcode_hinweisportal']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_styles']);
@@ -286,24 +284,24 @@ add_action('admin_post_hinschg_save_mandant', [$this, 'handle_save_mandant']);
         wp_enqueue_style('hinschg-portal');
 		$tcolor = get_theme_mod('link-color', '#006060');
         $custom_css = '
-			.hinschg-form{display:flex;flex-direction:column;gap:1em;padding:1.5em;background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+			.hinschg-form{display:flex;flex-direction:column;gap:1em;padding:1.5em;background:#fff;box-shadow:0 4px 14px #0002}
 			.hinschg-form label{font-weight:600;'.$tcolor.';margin-bottom:.3em}.hinschg-form input[type=text],
-			.hinschg-form input[type=email],.hinschg-form textarea,.hinschg-form input[type=file]{width:100%;padding:.7em;border:1px solid '.$tcolor.';border-radius:8px;font-size:1rem;box-sizing:border-box}
-			.hinschg-form input:focus,.hinschg-form textarea:focus{outline:none;border-color:'.$tcolor.';box-shadow:0 0 0 3px rgba(0,80,179,.15)}
+			.hinschg-form input[type=email],.hinschg-form textarea,.hinschg-form input[type=file]{width:100%;border:1px solid '.$tcolor.';font-size:1rem;box-sizing:border-box}
+			.hinschg-form input:focus,.hinschg-form textarea:focus{outline:none;border-color:'.$tcolor.';box-shadow:0 0 0 3px #5553}
 			.hinschg-form details{margin-top:1em;background:#f8fafc;border:1px solid '.$tcolor.';padding:.8em 1em}
 			.hinschg-form details[open]{background:'.$tcolor.'19}
             .hinschg-portal { background:#fffc;border:1px solid '.$tcolor.';max-width: 100%; margin: 1em auto; padding: 1em }
             .hinschg-portal .mandant-name { font-size: 1.3em; text-align: center; font-weight: 600; color: '.$tcolor.'; margin-bottom: .5em; }
             .hinschg-portal .intro-text { font-size: 1rem; line-height: 1.6; color: #333; text-align: center; margin: 0 0 1.5em; }
-            .hinschg-portal input[type="text"], .hinschg-portal input[type="email"], .hinschg-portal textarea { width: 100%; padding: .7em; border: 1px solid '.$tcolor.'; box-sizing: border-box; }
+            .hinschg-portal input[type="text"], .hinschg-portal input[type="email"], .hinschg-portal textarea { width: 100%; border: 1px solid '.$tcolor.'; box-sizing: border-box; }
             .hinschg-portal textarea { min-height: 140px; }
             .hinschg-portal button[type="submit"] { width: 100%;}
             .hinschg-portal details { margin-top: 1em; }
-        ';
+		';
         wp_add_inline_style('hinschg-portal', $custom_css);
     }
 
-public function shortcode_hinweisportal($atts, $content = '') {
+	public function shortcode_hinweisportal($atts, $content = '') {
         $tenant_id = isset($_GET['mandant']) ? preg_replace('/[^0-9]/', '', $_GET['mandant']) : '';
         $mandant = (preg_match('/^\d{8}$/', $tenant_id)) ? $this->get_mandant_by_tenant_id($tenant_id) : null;
         $opts = get_option(self::OPTION_KEY, []);
@@ -316,7 +314,7 @@ public function shortcode_hinweisportal($atts, $content = '') {
             return ob_get_clean();
         }
         // Mandantenname und Introtext
-        echo '<div class="mandant-name">' . esc_html($mandant->name) . '</div>';
+        echo '<div class="mandant-name">' . esc_html($mandant->name) . ' - ' . esc_html($mandant->ort) . '</div>';
         echo '<div class="intro-text">Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.</div>';
 		?>
 		<details class="hinweisgesetz-info" style="margin-bottom:1.5em;">
@@ -363,7 +361,17 @@ public function shortcode_hinweisportal($atts, $content = '') {
                     <p><label>E-Mail (optional)<br/><input type="email" name="contact_email" placeholder="anonym@example.org"/></label></p>
                 </details>
                 <p><label><input type="checkbox" name="confirm" required/> Ich bestätige, dass meine Angaben nach bestem Wissen und Gewissen korrekt sind.</label></p>
+                
+                <p class="antispam"><label><strong>Sicherheitsfrage:</strong> <?php
+                    $questions = $this->captcha_questions();
+                    $qid = array_rand($questions);
+                    echo esc_html($questions[$qid][0]);
+                ?><br>
+                    <input type="text" name="quiz_answer" required placeholder="Antwort eingeben" style="max-width:22ch;">
+                    <input type="hidden" name="quiz_id" value="<?php echo esc_attr($qid); ?>">
+                </label></p>
                 <p><button type="submit" name="hinschg_submit">Hinweis absenden</button></p>
+
             </fieldset>
             <p style="font-size:12px;opacity:.8;">Es werden keine IP-Adressen, Cookies oder Browserdaten gespeichert. Bitte vermeiden Sie personenbezogene Daten, sofern nicht zwingend erforderlich.</p>
         </form>
@@ -386,7 +394,19 @@ public function shortcode_hinweisportal($atts, $content = '') {
             return ['ok' => false, 'msg' => 'Bitte bestätigen Sie die Richtigkeit Ihrer Angaben.'];
         }
 
-        $subject = sanitize_text_field($_POST['subject'] ?? '');
+        
+        // Captcha-Validierung (mehrere Fragen, sessionlos)
+        $questions = $this->captcha_questions();
+        $qid = isset($_POST['quiz_id']) ? intval($_POST['quiz_id']) : -1;
+        $qa  = isset($_POST['quiz_answer']) ? $this->captcha_normalize(wp_unslash($_POST['quiz_answer'])) : '';
+        if (!isset($questions[$qid])) {
+            return ['ok'=>false,'msg'=>'Sicherheitsfrage fehlt oder ist ungültig. Bitte erneut versuchen.'];
+        }
+        $valids_norm = array_map([$this,'captcha_normalize'], $questions[$qid][1]);
+        if (!in_array($qa, $valids_norm, true)) {
+            return ['ok'=>false,'msg'=>'Sicherheitsfrage wurde nicht korrekt beantwortet. Bitte erneut versuchen.'];
+        }
+$subject = sanitize_text_field($_POST['subject'] ?? '');
         $message = wp_kses_post($_POST['message'] ?? '');
         if (!$message || strlen(trim(wp_strip_all_tags($message))) < 10) {
             return ['ok' => false, 'msg' => 'Bitte hinterlegen Sie eine aussagekräftige Beschreibung (min. 10 Zeichen).'];
@@ -440,9 +460,9 @@ public function shortcode_hinweisportal($atts, $content = '') {
 
         // Notify tenant
         $admin_link = add_query_arg(['post' => $post_id, 'action' => 'edit'], admin_url('post.php'));
-        $mail_subject = 'Neuer Hinweis (' . $mandant->name . ')';
+        $mail_subject = '[' . get_bloginfo('name') . '] HinschG-Portal - neuer Hinweis (' . $mandant->name . ')';
         $mail_body  = "Es wurde ein neuer Hinweis eingereicht.\n\n";
-        $mail_body .= "Mandant: {$mandant->name} ({$mandant->tenant_id})\n";
+        $mail_body .= "Mandant: {$mandant->name} {$mandant->ort}  ({$mandant->tenant_id})\n";
         $mail_body .= "Betreff: " . ($subject ?: '-') . "\n\n";
         $mail_body .= "Vorgangs-ID: {$token}\n";
         $mail_body .= "Ansicht im Backend: {$admin_link}\n\n";
@@ -475,7 +495,7 @@ public function shortcode_hinweisportal($atts, $content = '') {
                 $mail_body .= "\nAnhang (7 Tage gültig):\n{$dl_url}\n";
             }
         }
-// Download-Link für Anhang (7 Tage gültig) anfügen, falls Anhang existiert
+		// Download-Link für Anhang (7 Tage gültig) anfügen, falls Anhang existiert
         if (!empty($attachment_id)) {
             $dl_url = add_query_arg([
                 'action' => 'hinschg_dl',
@@ -485,8 +505,8 @@ public function shortcode_hinweisportal($atts, $content = '') {
             ], admin_url('admin-post.php'));
             
         }
-wp_mail($mandant->email, $mail_subject, $mail_body, $headers);
-
+        $mail_body .= "\n\nDiese Nachricht wurde versendet über das Hinschg-Portal: ".get_bloginfo('name')." ".get_bloginfo('url')."\n" . wp_strip_all_tags($message) . "\n";
+		wp_mail($mandant->email, $mail_subject, $mail_body, $headers);
         return ['ok' => true, 'msg' => 'gespeichert', 'token' => $token];
     }
 
@@ -687,6 +707,23 @@ wp_mail($mandant->email, $mail_subject, $mail_body, $headers);
             <p>Durch die Nutzung des Plugins erkennen Sie diesen Haftungsausschluss ausdrücklich an.</p>
         </div>
         <?php
+    }
+
+
+    // === Captcha (mehrere Fragen, sessionlos, ohne externe Dienste) ===
+    private function captcha_questions() {
+        return [
+            ['Welche Farbe hat der Himmel an einem wolkenlosen Tag?', ['blau','blue']],
+            ['Wieviel ist zwei plus drei?', ['5','fuenf','fünf','funf']],
+            ['Welcher Wochentag folgt auf Montag?', ['dienstag','tuesday']],
+            ['Schreibe das Wort "Mensch" rückwärts.', ['hcsnem']],
+            ['Welche Farbe hat eine reife Banane?', ['gelb','yellow']],
+        ];
+    }
+    private function captcha_normalize($s) {
+        $s = strtolower(trim((string)$s));
+        $s = strtr($s, ['ä'=>'ae','ö'=>'oe','ü'=>'ue','ß'=>'ss']);
+        return preg_replace('/\s+/', ' ', $s);
     }
 
 }
