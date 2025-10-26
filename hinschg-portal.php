@@ -505,7 +505,7 @@ $subject = sanitize_text_field($_POST['subject'] ?? '');
             ], admin_url('admin-post.php'));
             
         }
-        $mail_body .= "\n\nDiese Nachricht wurde versendet über das Hinschg-Portal: ".get_bloginfo('name')." ".get_bloginfo('url')."\n" . wp_strip_all_tags($message) . "\n";
+        $mail_body .= "\n\nDiese Nachricht wurde versendet über das Hinschg-Portal:\n".get_bloginfo('name')."\n".get_bloginfo('url')."\n";
 		wp_mail($mandant->email, $mail_subject, $mail_body, $headers);
         return ['ok' => true, 'msg' => 'gespeichert', 'token' => $token];
     }
