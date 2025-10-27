@@ -19,7 +19,7 @@ Text Domain: hinschg-portal
 if (!defined('ABSPATH')) { exit; }
 
 class HinSchG_Portal {
-    const DB_VERSION = '1.2.4';
+    const DB_VERSION = '1.2.5'; // DB_VERSION erhöht
     const OPTION_KEY = 'hinschg_portal_options';
     const NONCE_ACTION = 'hinschg_portal_action';
 
@@ -61,17 +61,29 @@ class HinSchG_Portal {
         $charset_collate = $wpdb->get_charset_collate();
         $table = $wpdb->prefix . 'hinschg_mandanten';
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        // NEU: 'website' VARCHAR(190) NULL hinzugefügt
+        
+		// Falls man die Mandantentabelle löschen will:
+		// $sql = "DELETE TABLE {$table};";
+        // dbDelta($sql);
+
         $sql = "CREATE TABLE {$table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             tenant_id CHAR(8) NOT NULL UNIQUE,
             name VARCHAR(190) NOT NULL,
             ort VARCHAR(190) NULL,
             email VARCHAR(190) NOT NULL,
+            website VARCHAR(190) NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
             KEY tenant_id_idx (tenant_id)
         ) {$charset_collate};";
         dbDelta($sql);
+        
+        // Fügt Spalte 'website' hinzu, falls sie bei einem Update fehlt
+        if( $wpdb->get_var("SHOW COLUMNS FROM `{$table}` LIKE 'website'") != 'website' ) {
+            $wpdb->query("ALTER TABLE `{$table}` ADD `website` VARCHAR(190) NULL AFTER `email`");
+        }
 
         // Default options
         if (!get_option(self::OPTION_KEY)) {
@@ -140,6 +152,14 @@ class HinSchG_Portal {
         $nonce = wp_create_nonce(self::NONCE_ACTION);
         $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
         $mandanten = $this->get_mandanten($search);
+		// Neue zufällige 8-stellige, noch nicht vergebene Tenant-ID vorschlagen
+		global $wpdb;
+		$table = $wpdb->prefix . 'hinschg_mandanten';
+		do {
+			$suggested_id = str_pad((string)rand(0, 99999999), 8, '0', STR_PAD_LEFT);
+			$exists = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE tenant_id = %s", $suggested_id));
+		} while ($exists > 0);
+
         ?>
         <div class="wrap">
             <h1><?php _e('Mandanten', 'hinschg-portal'); ?></h1>
@@ -153,10 +173,11 @@ class HinSchG_Portal {
                 <input type="hidden" name="action" value="hinschg_save_mandant" />
                 <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>"/>
                 <table class="form-table">
-                    <tr><th>8-stellige ID</th><td><input name="tenant_id" maxlength="8" pattern="[0-9]{8}" inputmode="numeric" required placeholder="12345678"/></td></tr>
+                    <tr><th>8-stellige ID</th><td><input name="tenant_id" maxlength="8" pattern="[0-9]{8}" inputmode="numeric" required value="<?php echo esc_attr($suggested_id); ?>"/></td></tr>
                     <tr><th>Name</th><td><input name="name" required/></td></tr>
                     <tr><th>Ort</th><td><input name="ort"/></td></tr>
                     <tr><th>Kontakt-E-Mail</th><td><input type="email" name="email" required/></td></tr>
+                    <tr><th>Webseite (optional)</th><td><input type="url" name="website" placeholder="https://www.example.com"/></td></tr>
                 </table>
                 <p><button class="button button-primary">Speichern</button></p>
             </form>
@@ -168,7 +189,7 @@ class HinSchG_Portal {
                     <th><?php _e('Name', 'hinschg-portal'); ?></th>
                     <th><?php _e('Ort', 'hinschg-portal'); ?></th>
                     <th><?php _e('E-Mail', 'hinschg-portal'); ?></th>
-                    <th><?php _e('Aktionen', 'hinschg-portal'); ?></th>
+                    <th><?php _e('Webseite', 'hinschg-portal'); ?></th> <th><?php _e('Aktionen', 'hinschg-portal'); ?></th>
                 </tr></thead>
                 <tbody>
                 <?php if ($mandanten) : foreach ($mandanten as $m) : ?>
@@ -177,6 +198,7 @@ class HinSchG_Portal {
                         <td><?php echo esc_html($m->name); ?></td>
                         <td><?php echo esc_html($m->ort); ?></td>
                         <td><?php echo esc_html($m->email); ?></td>
+                        <td><?php echo esc_html($m->website ?: '–'); ?></td> 
                         <td>
                             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Diesen Mandanten löschen?');" style="display:inline;">
                                 <input type="hidden" name="action" value="hinschg_delete_mandant" />
@@ -187,8 +209,7 @@ class HinSchG_Portal {
                         </td>
                     </tr>
                 <?php endforeach; else : ?>
-                    <tr><td colspan="5">Keine Einträge.</td></tr>
-                <?php endif; ?>
+                    <tr><td colspan="6">Keine Einträge.</td></tr> <?php endif; ?>
                 </tbody>
             </table>
         </div>
@@ -203,6 +224,13 @@ class HinSchG_Portal {
         $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
         $ort = isset($_POST['ort']) ? sanitize_text_field($_POST['ort']) : '';
         $email = isset($_POST['email']) ? sanitize_email($_POST['email']) : '';
+        // NEU: Webseite
+        $website = isset($_POST['website']) ? esc_url_raw($_POST['website']) : '';
+        
+        // Fügt HTTP/HTTPS hinzu, falls Protokoll fehlt und Wert vorhanden
+        if (!empty($website) && !preg_match('#^https?://#i', $website)) {
+             $website = 'https://' . $website;
+        }
 
         if (!preg_match('/^\d{8}$/', $tenant_id)) {
             wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'error' => 'id'], admin_url('admin.php')));
@@ -213,22 +241,21 @@ class HinSchG_Portal {
             exit;
         }
 
+        $data = [
+            'name'      => $name,
+            'ort'       => $ort,
+            'email'     => $email,
+            'website'   => $website, // NEU: Webseite
+        ];
+
         $existing = $this->get_mandant_by_tenant_id($tenant_id);
         if ($existing) {
             // Update
-            $wpdb->update($table, [
-                'name' => $name,
-                'ort'  => $ort,
-                'email'=> $email,
-            ], ['tenant_id' => $tenant_id]);
+            $wpdb->update($table, $data, ['tenant_id' => $tenant_id]);
         } else {
             // Insert
-            $wpdb->insert($table, [
-                'tenant_id' => $tenant_id,
-                'name'      => $name,
-                'ort'       => $ort,
-                'email'     => $email,
-            ]);
+            $data['tenant_id'] = $tenant_id;
+            $wpdb->insert($table, $data);
         }
         wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'updated' => '1'], admin_url('admin.php')));
         exit;
@@ -291,12 +318,14 @@ class HinSchG_Portal {
 			.hinschg-form details{margin-top:1em;background:#f8fafc;border:1px solid '.$tcolor.';padding:.8em 1em}
 			.hinschg-form details[open]{background:'.$tcolor.'19}
             .hinschg-portal { background:#fffc;border:1px solid '.$tcolor.';max-width: 100%; margin: 1em auto; padding: 1em }
-            .hinschg-portal .mandant-name { font-size: 1.3em; text-align: center; font-weight: 600; color: '.$tcolor.'; margin-bottom: .5em; }
-            .hinschg-portal .intro-text { font-size: 1rem; line-height: 1.6; color: #333; text-align: center; margin: 0 0 1.5em; }
+			.hinschg-portal .mandant-name {width:100%;display:inline-block;padding:6px;margin:.5em auto;text-align:center;font-size:1.4em;font-weight:600;color:'.$tcolor.';background:linear-gradient(90deg,'.$tcolor.'40,'.$tcolor.'16);border:1px solid '.$tcolor.'19;border-radius:12px;box-shadow:0 2px 6px #ccc8}
+            .hinschg-portal .intro-text { font-size: 1rem; line-height: 1.6; color: #333; text-align: justify; margin: 0 0 1.5em; }
             .hinschg-portal input[type="text"], .hinschg-portal input[type="email"], .hinschg-portal textarea { width: 100%; border: 1px solid '.$tcolor.'; box-sizing: border-box; }
             .hinschg-portal textarea { min-height: 140px; }
             .hinschg-portal button[type="submit"] { width: 100%;}
             .hinschg-portal details { margin-top: 1em; }
+			.notice-success {background:#e6ffed;border-left:4px solid #22c55e;color:#14532d;padding:.5em;}
+			.notice-error {background:#fee2e2;border-left:4px solid #ef4444;color:#7f1d1d;padding:.5em;}
 		';
         wp_add_inline_style('hinschg-portal', $custom_css);
     }
@@ -305,21 +334,28 @@ class HinSchG_Portal {
         $tenant_id = isset($_GET['mandant']) ? preg_replace('/[^0-9]/', '', $_GET['mandant']) : '';
         $mandant = (preg_match('/^\d{8}$/', $tenant_id)) ? $this->get_mandant_by_tenant_id($tenant_id) : null;
         $opts = get_option(self::OPTION_KEY, []);
-
+		$hinschginfo = 'Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken für das oben angegebene Unternehmen. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.';
         ob_start();
         echo '<div class="hinschg-portal">';
         if (!$mandant) {
-            echo '<div class="notice notice-warning"><p>Bitte rufen Sie den Link mit einem gültigen Mandanten-Parameter auf (z. B. <code>?mandant=12345678</code>).</p></div>';
+			echo '<div class="intro-text">'.$hinschginfo.'</div>';
+            echo '<div class="notice-error"><p>Bitte rufen Sie den Link mit einem gültigen Mandanten-Parameter auf (z. B. <code>?mandant=12345678</code>).</p></div>';
             echo '</div>';
             return ob_get_clean();
         }
+        
         // Mandantenname und Introtext
-        echo '<div class="mandant-name">' . esc_html($mandant->name) . ' - ' . esc_html($mandant->ort) . '</div>';
-        echo '<div class="intro-text">Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.</div>';
+        echo '<div class="mandant-name">' . esc_html($mandant->name) . ' &nbsp; <i class="fa fa-building"></i> ' . esc_html($mandant->ort);
+        // NEU: Webseite-Link im Frontend
+        if (!empty($mandant->website)) {
+            echo ' &nbsp; <a href="' . esc_url($mandant->website) . '" target="_blank" rel="noopener nofollow">' . parse_url($mandant->website, PHP_URL_HOST) . '</a>';
+        }
+        echo '</div>';
+        echo '<div class="intro-text">'.$hinschginfo.'</div>';
 		?>
 		<details class="hinweisgesetz-info" style="margin-bottom:1.5em;">
-			<summary style="cursor:pointer;font-weight:600">Was ist das Hinweisgeberschutzgesetz?</summary>
-			<div style="margin-top:.8em;color:#333;">
+			<summary>Was ist das Hinweisgeberschutzgesetz?</summary>
+			<div>
 				<p>Das <strong>Hinweisgeberschutzgesetz (HinSchG)</strong> schützt Personen, die Missstände oder Rechtsverstöße in Unternehmen oder Behörden melden – sogenannte Hinweisgeber oder Whistleblower.</p>
 				<p>Es verpflichtet Organisationen ab einer bestimmten Größe, eine <strong>interne Meldestelle</strong> einzurichten, über die Mitarbeitende oder externe Personen sicher und vertraulich Hinweise abgeben können.</p>
 				<p><em>Kurz gesagt:</em> Dieses Gesetz sorgt dafür, dass Hinweise auf Fehlverhalten vertraulich behandelt werden und Hinweisgeber vor Benachteiligung oder Repressalien geschützt sind.</p>
@@ -331,9 +367,9 @@ class HinSchG_Portal {
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hinschg_submit'])) {
             $result = $this->handle_front_submission($mandant, $opts);
             if ($result['ok']) {
-                echo '<div class="notice notice-success"><p>Vielen Dank. Ihr Hinweis wurde sicher übermittelt. Vorgangs-ID: <code>' . esc_html($result['token']) . '</code></p></div>';
+                echo '<div class="notice-success"><p>Vielen Dank. Ihr Hinweis wurde sicher übermittelt. Vorgangs-ID: <code>' . esc_html($result['token']) . '</code></p></div>';
             } else {
-                echo '<div class="notice notice-error"><p>' . esc_html($result['msg']) . '</p></div>';
+                echo '<div class="notice-error"><p>' . esc_html($result['msg']) . '</p></div>';
             }
         }
 
@@ -357,8 +393,8 @@ class HinSchG_Portal {
                 <p><label>Datei anhängen (optional, max. <?php echo esc_html($max_mb); ?> MB)<br/>
                     <input type="file" name="attachment" /></label></p>
                 <details><summary>Kontakt aufnehmen? (optional)</summary>
-                    <p>Wenn Sie eine Rückmeldung wünschen, können Sie eine anonyme E-Mail-Adresse angeben. Dies ist freiwillig. Wenn Sie Ihre Identität nicht preisgeben möchten, können Sie eine E-Mail-Adresse bei einem anonymen Anbieter wie ProtonMail nutzen und diese bei der Meldestelle angeben</p>
-                    <p><label>E-Mail (optional)<br/><input type="email" name="contact_email" placeholder="anonym@example.org"/></label></p>
+                    <div>Wenn Sie eine Rückmeldung wünschen, können Sie eine anonyme E-Mail-Adresse angeben. Dies ist freiwillig. Wenn Sie Ihre Identität nicht preisgeben möchten, können Sie eine E-Mail-Adresse bei einem anonymen Anbieter wie ProtonMail nutzen und diese bei der Meldestelle angeben</p>
+                    <p><label>E-Mail (optional)<br/><input type="email" name="contact_email" placeholder="anonym@example.org"/></label></div>
                 </details>
                 <p><label><input type="checkbox" name="confirm" required/> Ich bestätige, dass meine Angaben nach bestem Wissen und Gewissen korrekt sind.</label></p>
                 
@@ -406,7 +442,7 @@ class HinSchG_Portal {
         if (!in_array($qa, $valids_norm, true)) {
             return ['ok'=>false,'msg'=>'Sicherheitsfrage wurde nicht korrekt beantwortet. Bitte erneut versuchen.'];
         }
-$subject = sanitize_text_field($_POST['subject'] ?? '');
+        $subject = sanitize_text_field($_POST['subject'] ?? '');
         $message = wp_kses_post($_POST['message'] ?? '');
         if (!$message || strlen(trim(wp_strip_all_tags($message))) < 10) {
             return ['ok' => false, 'msg' => 'Bitte hinterlegen Sie eine aussagekräftige Beschreibung (min. 10 Zeichen).'];
@@ -463,6 +499,8 @@ $subject = sanitize_text_field($_POST['subject'] ?? '');
         $mail_subject = '[' . get_bloginfo('name') . '] HinschG-Portal - neuer Hinweis (' . $mandant->name . ')';
         $mail_body  = "Es wurde ein neuer Hinweis eingereicht.\n\n";
         $mail_body .= "Mandant: {$mandant->name} {$mandant->ort}  ({$mandant->tenant_id})\n";
+        // NEU: Webseite im Mail-Body
+        if (!empty($mandant->website)) { $mail_body .= "Webseite: {$mandant->website}\n"; }
         $mail_body .= "Betreff: " . ($subject ?: '-') . "\n\n";
         $mail_body .= "Vorgangs-ID: {$token}\n";
         $mail_body .= "Ansicht im Backend: {$admin_link}\n\n";
