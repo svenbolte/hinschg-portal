@@ -8,8 +8,8 @@ Author URI: https://github.com/svenbolte/
 Plugin URI: https://github.com/svenbolte/hinschg-portal/
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
-Version: 1.2.4
-Stable tag: 1.2.4
+Version: 1.2.5
+Stable tag: 1.2.5
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
@@ -163,11 +163,6 @@ class HinSchG_Portal {
         ?>
         <div class="wrap">
             <h1><?php _e('Mandanten', 'hinschg-portal'); ?></h1>
-            <form method="get" style="margin:1em 0;">
-                <input type="hidden" name="page" value="hinschg-portal"/>
-                <input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Suche nach ID oder Name" />
-                <button class="button">Suchen</button>
-            </form>
             <h2><?php _e('Neuen Mandanten anlegen', 'hinschg-portal'); ?></h2>
             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                 <input type="hidden" name="action" value="hinschg_save_mandant" />
@@ -183,9 +178,15 @@ class HinSchG_Portal {
             </form>
 
             <h2><?php _e('Bestehende Mandanten', 'hinschg-portal'); ?></h2>
+            <form method="get" style="margin:1em 0;">
+                <input type="hidden" name="page" value="hinschg-portal"/>
+                <input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Suche nach ID oder Name" />
+                <button class="button">Suchen</button>
+            </form>
             <table class="widefat fixed striped">
                 <thead><tr>
                     <th><?php _e('ID', 'hinschg-portal'); ?></th>
+                    <th><?php _e('Link kopieren', 'hinschg-portal'); ?></th>
                     <th><?php _e('Name', 'hinschg-portal'); ?></th>
                     <th><?php _e('Ort', 'hinschg-portal'); ?></th>
                     <th><?php _e('E-Mail', 'hinschg-portal'); ?></th>
@@ -195,8 +196,10 @@ class HinSchG_Portal {
                 <?php if ($mandanten) : foreach ($mandanten as $m) : ?>
                     <tr>
                         <td><code><?php echo esc_html($m->tenant_id); ?></code></td>
+			            <td><input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard"  value="<?php echo get_bloginfo('url').'/hinweise?mandant='.esc_html($m->tenant_id); ?> ">
+							<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p></td>
                         <td><?php echo esc_html($m->name); ?></td>
-                        <td><?php echo esc_html($m->ort); ?></td>
+						<td><?php echo esc_html($m->ort); ?></td>
                         <td><?php echo esc_html($m->email); ?></td>
                         <td><?php echo esc_html($m->website ?: '–'); ?></td> 
                         <td>
@@ -297,8 +300,10 @@ class HinSchG_Portal {
                 <p><button class="button button-primary">Speichern</button></p>
             </form>
             <hr/>
-            <p><strong>Shortcode:</strong> <code>[hinweisportal]</code> – URL-Parameter: <code>?mandant=12345678</code></p>
-            <p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
+            <p><strong>Seite mit Titel "Hinweise" erstellen, Shortcode:</strong> <code>[hinweisportal]</code> – URL-Parameter: <code>?mandant=12345678</code></p>
+            <div><strong>URL zu dieser Seite: <input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard" style="min-width:50%" value="<?php echo get_bloginfo('url').'/hinweise?mandant=12345678'; ?> ">
+			<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p></div>
+			<p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
         </div>
         <?php
     }
