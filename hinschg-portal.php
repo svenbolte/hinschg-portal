@@ -39,11 +39,14 @@ class HinSchG_Portal {
         add_action('admin_menu', [$this, 'register_legal_page']);
 		add_action('admin_post_hinschg_save_mandant', [$this, 'handle_save_mandant']);
         add_action('admin_post_hinschg_delete_mandant', [$this, 'handle_delete_mandant']);
+        add_action('admin_post_hinschg_save_logo', [$this, 'handle_save_logo']);
         add_shortcode('hinweisportal', [$this, 'shortcode_hinweisportal']);
         add_action('wp_enqueue_scripts', [$this, 'enqueue_styles']);
         add_action('admin_post_nopriv_hinschg_dl', [$this, 'handle_download']);
         add_action('admin_post_hinschg_dl', [$this, 'handle_download']);
         add_action('init', [$this, 'register_cpt_hinweis']);
+        add_filter('sanitize_file_name', [$this, 'prefix_tenant_filename'], 10, 1);
+        add_action('init', [$this, 'maybe_migrate']);
 
         // Admin-UI Erweiterungen für Hinweise
         add_filter('manage_edit-hinweis_columns', [$this, 'admin_columns']);
@@ -61,12 +64,12 @@ class HinSchG_Portal {
         $charset_collate = $wpdb->get_charset_collate();
         $table = $wpdb->prefix . 'hinschg_mandanten';
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        // NEU: 'website' VARCHAR(190) NULL hinzugefügt
         
-		// Falls man die Mandantentabelle löschen will:
-		// $sql = "DELETE TABLE {$table};";
-        // dbDelta($sql);
-
+        // Ensure 'logo_id' exists for older installs
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
+        
         $sql = "CREATE TABLE {$table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             tenant_id CHAR(8) NOT NULL UNIQUE,
@@ -74,6 +77,7 @@ class HinSchG_Portal {
             ort VARCHAR(190) NULL,
             email VARCHAR(190) NOT NULL,
             website VARCHAR(190) NULL,
+            logo_id BIGINT UNSIGNED NULL,
             created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY  (id),
             KEY tenant_id_idx (tenant_id)
@@ -135,6 +139,10 @@ class HinSchG_Portal {
 
     private function get_mandanten($search = '') {
         global $wpdb; $table = $wpdb->prefix . 'hinschg_mandanten';
+        /* HP_FIX: ensure logo_id column */
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
         if ($search) {
             $like = '%' . $wpdb->esc_like($search) . '%';
             return $wpdb->get_results($wpdb->prepare("SELECT * FROM {$table} WHERE tenant_id LIKE %s OR name LIKE %s ORDER BY created_at DESC", $like, $like));
@@ -144,77 +152,222 @@ class HinSchG_Portal {
 
     private function get_mandant_by_tenant_id($tenant_id) {
         global $wpdb; $table = $wpdb->prefix . 'hinschg_mandanten';
+        /* HP_FIX: ensure logo_id column */
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
         return $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE tenant_id = %s", $tenant_id));
     }
 
+    // VOLLSTÄNDIGE UND KORRIGIERTE render_mandanten_page() FUNKTION
     public function render_mandanten_page() {
+        /* HP_FIX: opts in mandanten page */
+        $opts = get_option(self::OPTION_KEY, []);
         if (!current_user_can('manage_options')) { return; }
         $nonce = wp_create_nonce(self::NONCE_ACTION);
         $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
         $mandanten = $this->get_mandanten($search);
-		// Neue zufällige 8-stellige, noch nicht vergebene Tenant-ID vorschlagen
-		global $wpdb;
-		$table = $wpdb->prefix . 'hinschg_mandanten';
-		do {
-			$suggested_id = str_pad((string)rand(0, 99999999), 8, '0', STR_PAD_LEFT);
-			$exists = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table} WHERE tenant_id = %s", $suggested_id));
-		} while ($exists > 0);
+        
+        // --- START: Logo Edit View (falls 'edit' Parameter gesetzt) ---
+        if (isset($_GET['edit']) && preg_match('/^\d{8}$/', $_GET['edit'])) {
+            $edit_id = $_GET['edit'];
+            $m = $this->get_mandant_by_tenant_id($edit_id);
+            if ( function_exists('wp_enqueue_media') ) { wp_enqueue_media(); }
+            
+            if ($m) {
+                // Determine current logo URL and ID
+                $current_logo_id = (int) $m->logo_id;
+                $current_logo_url = $current_logo_id ? wp_get_attachment_url($current_logo_id) : '';
+                $success_msg = isset($_GET['updated']) && $_GET['updated'] === 'logo_ok' ? '<div class="updated notice"><p>Logo erfolgreich gespeichert.</p></div>' : '';
+                
+                ?>
+                <div class="wrap">
+                    <h1><?php _e('Mandanten – Logo bearbeiten', 'hinschg-portal'); ?></h1>
+                    <?php echo $success_msg; ?>
+                    <h2><?php echo esc_html($m->name); ?> (<?php echo esc_html($m->tenant_id); ?>)</h2>
 
+                    <a href="<?php echo esc_url( remove_query_arg(['edit', 'updated'], admin_url('admin.php?page=hinschg-portal')) ); ?>" class="button">&laquo; Zurück zur Mandanten-Übersicht</a>
+
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 20px;">
+                        <input type="hidden" name="action" value="hinschg_save_logo" />
+                        <input type="hidden" name="tenant_id" value="<?php echo esc_attr($m->tenant_id); ?>" />
+                        <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(self::NONCE_ACTION)); ?>"/>
+                        
+                        <h3><?php _e('Aktuelles Logo', 'hinschg-portal'); ?></h3>
+                        <?php if ($current_logo_url): ?>
+                            <img src="<?php echo esc_url($current_logo_url); ?>" style="max-width: 200px; max-height: 100px; border: 1px solid #ccc; padding: 5px; background: #fff; display: block; margin-bottom: 10px;" alt="<?php echo esc_attr($m->name); ?> Logo" />
+                        <?php else: ?>
+                            <p><?php _e('Kein Logo hinterlegt.', 'hinschg-portal'); ?></p>
+                        <?php endif; ?>
+
+                        <h3><?php _e('Logo auswählen oder hochladen', 'hinschg-portal'); ?></h3>
+                        <p>
+                            <input type="hidden" name="logo_id" id="hinschg_logo_id" value="<?php echo esc_attr($current_logo_id); ?>" />
+                            <button type="button" class="button button-secondary hinschg_upload_logo_button" data-tenant-id="<?php echo esc_attr($m->tenant_id); ?>">
+                                <?php _e('Logo auswählen/hochladen', 'hinschg-portal'); ?>
+                            </button>
+                            <?php if ($current_logo_id): ?>
+                                <button type="button" class="button button-secondary hinschg_remove_logo_button"><?php _e('Logo entfernen', 'hinschg-portal'); ?></button>
+                            <?php endif; ?>
+                            <p class="description"><?php _e('Optimale Größe: 200x100 Pixel (wird automatisch skaliert).', 'hinschg-portal'); ?></p>
+                            <button type="submit" class="button button-primary" style="display:none;">Logo speichern</button>
+                        </p>
+                    </form>
+
+                    <script>
+                    jQuery(document).ready(function($){
+                        var media_uploader;
+                        
+                        // Set cookie for filename prefixing (um die Mandanten-ID in der prefix_tenant_filename Funktion zu nutzen)
+                        $('.hinschg_upload_logo_button').on('click', function(e) {
+                            e.preventDefault();
+                            var tenantId = $(this).data('tenant-id');
+                            document.cookie = "hinschg_tenant=" + tenantId + "; path=/; max-age=" + (3600); // 1 Stunde Gültigkeit
+                            
+                            if (media_uploader) { media_uploader.open(); return; }
+
+                            media_uploader = wp.media.frames.file_frame = wp.media({
+                                title: '<?php _e("Logo für Mandant auswählen", "hinschg-portal"); ?>',
+                                button: { text: '<?php _e("Logo verwenden", "hinschg-portal"); ?>' },
+                                multiple: false
+                            });
+
+                            media_uploader.on('select', function() {
+                                var attachment = media_uploader.state().get('selection').first().toJSON();
+                                $('#hinschg_logo_id').val(attachment.id);
+                                // Sende das Formular ab, um die ID zu speichern
+                                $('#hinschg_logo_id').closest('form').submit(); 
+                            });
+
+                            media_uploader.open();
+                        });
+
+                        // Logo entfernen
+                        $('.hinschg_remove_logo_button').on('click', function(e) {
+                            e.preventDefault();
+                            if(confirm('<?php _e("Soll das Logo wirklich entfernt werden?", "hinschg-portal"); ?>')) {
+                                $('#hinschg_logo_id').val('');
+                                // Sende das Formular ab, um die leere ID zu speichern
+                                $('#hinschg_logo_id').closest('form').submit();
+                            }
+                        });
+                        
+                        // Cookie löschen, wenn die Seite verlassen wird
+                        $(window).on('beforeunload', function() {
+                            document.cookie = "hinschg_tenant=; path=/; max-age=0";
+                        });
+                    });
+                    </script>
+
+                    <h2 style="margin-top: 2em;"><?php _e('Mandanten löschen', 'hinschg-portal'); ?></h2>
+                    <p>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('<?php _e('Diesen Mandanten löschen? Alle Hinweise bleiben erhalten.', 'hinschg-portal'); ?>');" style="display:inline;">
+                            <input type="hidden" name="action" value="hinschg_delete_mandant" />
+                            <input type="hidden" name="tenant_id" value="<?php echo esc_attr($m->tenant_id); ?>" />
+                            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(self::NONCE_ACTION)); ?>"/>
+                            <button class="button button-link-delete"><?php _e('Mandanten löschen', 'hinschg-portal'); ?></button>
+                        </form>
+                    </p>
+                </div>
+                <?php
+            } else {
+                echo '<div class="wrap"><h1>' . __('Mandant nicht gefunden.', 'hinschg-portal') . '</h1></div>';
+            }
+            return; // Beendet die Funktion nach Rendering der Detailansicht
+        }
+        // --- END: Logo Edit View ---
+        
+        // --- START: Hauptansicht Mandanten-Liste (Wiederhergestellt) ---
+        // Basis-URL für das Portal (aus der settings_page entnommen)
+        $portal_base_url = get_bloginfo('url') . '/hinweise?mandant='; 
         ?>
         <div class="wrap">
-            <h1><?php _e('Mandanten', 'hinschg-portal'); ?></h1>
-            <h2><?php _e('Neuen Mandanten anlegen', 'hinschg-portal'); ?></h2>
-            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+            <h1><?php _e('Mandanten verwalten', 'hinschg-portal'); ?></h1>
+            
+            <?php // Formular zum Anlegen/Bearbeiten eines Mandanten
+            if (isset($_GET['updated']) && $_GET['updated'] === '1') { echo '<div class="updated notice"><p>Mandant gespeichert.</p></div>'; }
+            if (isset($_GET['deleted'])) { echo '<div class="updated notice"><p>Mandant gelöscht.</p></div>'; }
+            if (isset($_GET['error'])) { 
+                $msg = ($_GET['error'] === 'id') ? 'Die ID muss 8-stellig und numerisch sein.' : 'Die E-Mail-Adresse ist ungültig.';
+                echo '<div class="error notice"><p>Fehler: ' . esc_html($msg) . '</p></div>'; 
+            }
+            ?>
+            
+            <p><strong><?php _e('Neuen Mandanten anlegen/bearbeiten:', 'hinschg-portal'); ?></strong></p>
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom: 20px;">
                 <input type="hidden" name="action" value="hinschg_save_mandant" />
-                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>"/>
-                <table class="form-table">
-                    <tr><th>8-stellige ID</th><td><input name="tenant_id" maxlength="8" pattern="[0-9]{8}" inputmode="numeric" required value="<?php echo esc_attr($suggested_id); ?>"/></td></tr>
-                    <tr><th>Name</th><td><input name="name" required/></td></tr>
-                    <tr><th>Ort</th><td><input name="ort"/></td></tr>
-                    <tr><th>Kontakt-E-Mail</th><td><input type="email" name="email" required/></td></tr>
-                    <tr><th>Webseite (optional)</th><td><input type="url" name="website" placeholder="https://www.example.com"/></td></tr>
-                </table>
-                <p><button class="button button-primary">Speichern</button></p>
-            </form>
-
-            <h2><?php _e('Bestehende Mandanten', 'hinschg-portal'); ?></h2>
-            <form method="get" style="margin:1em 0;">
-                <input type="hidden" name="page" value="hinschg-portal"/>
-                <input type="search" name="s" value="<?php echo esc_attr($search); ?>" placeholder="Suche nach ID oder Name" />
-                <button class="button">Suchen</button>
-            </form>
-            <table class="widefat fixed striped">
-                <thead><tr>
-                    <th><?php _e('ID', 'hinschg-portal'); ?></th>
-                    <th><?php _e('Link kopieren', 'hinschg-portal'); ?></th>
-                    <th><?php _e('Name', 'hinschg-portal'); ?></th>
-                    <th><?php _e('Ort', 'hinschg-portal'); ?></th>
-                    <th><?php _e('E-Mail', 'hinschg-portal'); ?></th>
-                    <th><?php _e('Webseite', 'hinschg-portal'); ?></th> <th><?php _e('Aktionen', 'hinschg-portal'); ?></th>
-                </tr></thead>
-                <tbody>
-                <?php if ($mandanten) : foreach ($mandanten as $m) : ?>
+                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(self::NONCE_ACTION)); ?>"/>
+                <table class="form-table" style="width: auto;">
                     <tr>
-                        <td><code><?php echo esc_html($m->tenant_id); ?></code></td>
-			            <td><input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard"  value="<?php echo get_bloginfo('url').'/hinweise?mandant='.esc_html($m->tenant_id); ?> ">
-							<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p></td>
-                        <td><?php echo esc_html($m->name); ?></td>
-						<td><?php echo esc_html($m->ort); ?></td>
-                        <td><?php echo esc_html($m->email); ?></td>
-                        <td><?php echo esc_html($m->website ?: '–'); ?></td> 
-                        <td>
-                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('Diesen Mandanten löschen?');" style="display:inline;">
+                        <th scope="row"><label for="tenant_id"><?php _e('ID (8-stellig, nur Zahlen)', 'hinschg-portal'); ?></label></th>
+                        <td><input type="text" id="tenant_id" name="tenant_id" required pattern="\d{8}" maxlength="8" placeholder="12345678"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="name"><?php _e('Name', 'hinschg-portal'); ?></label></th>
+                        <td><input type="text" id="name" name="name" required placeholder="Firma Mustermann GmbH"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="ort"><?php _e('Ort', 'hinschg-portal'); ?></label></th>
+                        <td><input type="text" id="ort" name="ort" placeholder="Musterstadt"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="email"><?php _e('E-Mail für Benachrichtigung', 'hinschg-portal'); ?></label></th>
+                        <td><input type="email" id="email" name="email" required placeholder="kontakt@mandant.de"/></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="website"><?php _e('Webseite (Optional)', 'hinschg-portal'); ?></label></th>
+                        <td><input type="url" id="website" name="website" placeholder="https://www.mandant.de"/></td>
+                    </tr>
+                </table>
+                <p><button class="button button-primary"><?php _e('Mandanten speichern/aktualisieren', 'hinschg-portal'); ?></button></p>
+            </form>
+            
+            <?php if (!empty($mandanten)) { ?>
+            <h2><?php _e('Vorhandene Mandanten', 'hinschg-portal'); ?></h2>
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th scope="col" style="width: 10%"><?php _e('ID', 'hinschg-portal'); ?></th>
+                        <th scope="col" style="width: 30%"><?php _e('Link kopieren', 'hinschg-portal'); ?></th>
+                        <th scope="col"><?php _e('Name', 'hinschg-portal'); ?></th>
+                        <th scope="col"><?php _e('Ort', 'hinschg-portal'); ?></th>
+                        <th scope="col"><?php _e('E-Mail', 'hinschg-portal'); ?></th>
+                        <th scope="col"><?php _e('Webseite', 'hinschg-portal'); ?></th>
+                        <th scope="col" style="width: 15%"><?php _e('Aktionen', 'hinschg-portal'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($mandanten as $m) : 
+                        $copy_url = get_bloginfo('url').'/hinweise?mandant='.esc_html($m->tenant_id);
+                    ?>
+                    <tr>
+                        <td data-colname="ID"><?php echo esc_html($m->tenant_id); ?></td>
+                        <td data-colname="Link kopieren">
+                            <input id="copy-hinurl-<?php echo esc_attr($m->tenant_id); ?>" name="copy-hinurl" type="text" class="copy-to-clipboard" value="<?php echo $copy_url; ?> " readonly style="width: 100%; cursor: pointer;" />
+							<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p>
+                        </td>
+                        <td data-colname="Name">
+                            <?php echo esc_html($m->name); ?>
+                            <a href="<?php echo esc_url( add_query_arg(['page'=>'hinschg-portal','edit'=>$m->tenant_id], admin_url('admin.php')) ); ?>" style="font-size: 0.9em; display: block;"><?php _e('(Logo bearbeiten)', 'hinschg-portal'); ?></a>
+                        </td>
+                        <td data-colname="Ort"><?php echo esc_html($m->ort); ?></td>
+                        <td data-colname="E-Mail"><?php echo esc_html($m->email); ?></td>
+                        <td data-colname="Webseite"><?php echo !empty($m->website) ? '<a href="' . esc_url($m->website) . '" target="_blank">' . esc_html(parse_url($m->website, PHP_URL_HOST)) . '</a>' : '–'; ?></td>
+                        <td data-colname="Aktionen">
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('<?php _e('Diesen Mandanten löschen? Alle Hinweise bleiben erhalten.', 'hinschg-portal'); ?>');" style="display:inline;">
                                 <input type="hidden" name="action" value="hinschg_delete_mandant" />
                                 <input type="hidden" name="tenant_id" value="<?php echo esc_attr($m->tenant_id); ?>" />
-                                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr($nonce); ?>"/>
-                                <button class="button button-link-delete">Löschen</button>
+                                <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(self::NONCE_ACTION)); ?>"/>
+                                <button class="button button-link-delete"><?php _e('Löschen', 'hinschg-portal'); ?></button>
                             </form>
                         </td>
                     </tr>
-                <?php endforeach; else : ?>
-                    <tr><td colspan="6">Keine Einträge.</td></tr> <?php endif; ?>
+                    <?php endforeach; ?>
                 </tbody>
             </table>
+            <?php } else { ?>
+                <p><strong><?php _e('Keine Einträge gefunden.', 'hinschg-portal'); ?></strong></p>
+            <?php } ?>
         </div>
         <?php
     }
@@ -222,7 +375,16 @@ class HinSchG_Portal {
     public function handle_save_mandant() {
         if (!current_user_can('manage_options')) { wp_die('Nope'); }
         check_admin_referer(self::NONCE_ACTION);
+        if ( ! function_exists('media_handle_upload') ) {
+            require_once ABSPATH . 'wp-admin/includes/image.php';
+            require_once ABSPATH . 'wp-admin/includes/file.php';
+            require_once ABSPATH . 'wp-admin/includes/media.php';
+        }
         global $wpdb; $table = $wpdb->prefix . 'hinschg_mandanten';
+        /* HP_FIX: ensure logo_id column */
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
         $tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', $_POST['tenant_id']) : '';
         $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
         $ort = isset($_POST['ort']) ? sanitize_text_field($_POST['ort']) : '';
@@ -235,7 +397,17 @@ class HinSchG_Portal {
              $website = 'https://' . $website;
         }
 
-        if (!preg_match('/^\d{8}$/', $tenant_id)) {
+        
+        // Preserve existing fields if this is a partial update (e.g., only logo upload)
+        $existing = null;
+        if ($tenant_id) { $existing = $this->get_mandant_by_tenant_id($tenant_id); }
+        if ($existing) {
+            if ($name === '')   { $name   = $existing->name; }
+            if ($ort === '')    { $ort    = $existing->ort; }
+            if ($email === '')  { $email  = $existing->email; }
+            if ($website === ''){ $website= $existing->website; }
+        }
+    if (!preg_match('/^\d{8}$/', $tenant_id)) {
             wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'error' => 'id'], admin_url('admin.php')));
             exit;
         }
@@ -260,7 +432,7 @@ class HinSchG_Portal {
             $data['tenant_id'] = $tenant_id;
             $wpdb->insert($table, $data);
         }
-        wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'updated' => '1'], admin_url('admin.php')));
+        wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'updated' => '1', 'logo' => (!empty($logo_id) || !empty($logo_saved) ? 'ok' : (isset($upload_err) ? $upload_err : 'na')), 'f' => isset($logo_field)? $logo_field : ''], admin_url('admin.php')));
         exit;
     }
 
@@ -268,6 +440,10 @@ class HinSchG_Portal {
         if (!current_user_can('manage_options')) { wp_die('Nope'); }
         check_admin_referer(self::NONCE_ACTION);
         global $wpdb; $table = $wpdb->prefix . 'hinschg_mandanten';
+        /* HP_FIX: ensure logo_id column */
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
         $tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', $_POST['tenant_id']) : '';
         if (preg_match('/^\d{8}$/', $tenant_id)) {
             $wpdb->delete($table, ['tenant_id' => $tenant_id]);
@@ -276,7 +452,64 @@ class HinSchG_Portal {
         exit;
     }
 
+    /**
+     * Speichert die Logo-ID für einen Mandanten.
+     */
+    public function handle_save_logo() {
+        if (!current_user_can('manage_options')) { wp_die('Nope'); }
+        check_admin_referer(self::NONCE_ACTION);
+        
+        global $wpdb; $table = $wpdb->prefix . 'hinschg_mandanten';
+        /* HP_FIX: ensure logo_id column */
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
+        
+        $tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', $_POST['tenant_id']) : '';
+        // logo_id kann 0 sein, wenn "Logo entfernen" geklickt wird
+        $logo_id = isset($_POST['logo_id']) ? intval($_POST['logo_id']) : 0;
+
+        if (!preg_match('/^\d{8}$/', $tenant_id)) {
+            wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'error' => 'id'], admin_url('admin.php')));
+            exit;
+        }
+
+        // Führt ein Update nur der logo_id durch
+        $wpdb->update($table, ['logo_id' => $logo_id], ['tenant_id' => $tenant_id]);
+
+        // Leitet zur Bearbeitungsseite zurück mit einer Erfolgsmeldung
+        wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'edit' => $tenant_id, 'updated' => 'logo_ok'], admin_url('admin.php')));
+        exit;
+    }
+    
+    public function maybe_migrate() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hinschg_mandanten';
+        // Create table if missing (defensive) and ensure logo_id exists
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$table}'") != $table) { return; }
+        if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
+            $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
+        }
+    }
+    
+    
+    public function prefix_tenant_filename($filename) {
+        // Read tenant id from cookie set by our media modal
+        $tid = isset($_COOKIE['hinschg_tenant']) ? preg_replace('/[^0-9]/', '', $_COOKIE['hinschg_tenant']) : '';
+        if ($tid && preg_match('/^\d{8}$/', $tid)) {
+            $info = pathinfo($filename);
+            $name = $info['filename'] ?? $filename;
+            $ext  = isset($info['extension']) ? '.' . $info['extension'] : '';
+            // Avoid double prefix
+            if (strpos($name, $tid . '-') !== 0) {
+                $filename = $tid . '-' . $name . $ext;
+            }
+        }
+        return $filename;
+    }
+    
     /* ===================== Einstellungen ===================== */
+        
     public function render_settings_page() {
         if (!current_user_can('manage_options')) { return; }
         $opts = get_option(self::OPTION_KEY, []);
@@ -301,7 +534,7 @@ class HinSchG_Portal {
             </form>
             <hr/>
             <p><strong>Seite mit Titel "Hinweise" erstellen, Shortcode:</strong> <code>[hinweisportal]</code> – URL-Parameter: <code>?mandant=12345678</code></p>
-            <div><strong>URL zu dieser Seite: <input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard" style="min-width:50%" value="<?php echo get_bloginfo('url').'/hinweise?mandant=12345678'; ?> ">
+            <div><strong>URL zu dieser Seite: <input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard" style="min-width:50%" value="<?php echo get_bloginfo('url').'/hinweise?mandant=12345678'; ?>">
 			<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p></div>
 			<p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
         </div>
@@ -323,7 +556,7 @@ class HinSchG_Portal {
 			.hinschg-form details{margin-top:1em;background:#f8fafc;border:1px solid '.$tcolor.';padding:.8em 1em}
 			.hinschg-form details[open]{background:'.$tcolor.'19}
             .hinschg-portal { background:#fffc;border:1px solid '.$tcolor.';max-width: 100%; margin: 1em auto; padding: 1em }
-			.hinschg-portal .mandant-name {width:100%;display:inline-block;padding:6px;margin:.5em auto;text-align:center;font-size:1.4em;font-weight:600;color:'.$tcolor.';background:linear-gradient(90deg,'.$tcolor.'40,'.$tcolor.'16);border:1px solid '.$tcolor.'19;border-radius:12px;box-shadow:0 2px 6px #ccc8}
+			
             .hinschg-portal .intro-text { font-size: 1rem; line-height: 1.6; color: #333; text-align: justify; margin: 0 0 1.5em; }
             .hinschg-portal input[type="text"], .hinschg-portal input[type="email"], .hinschg-portal textarea { width: 100%; border: 1px solid '.$tcolor.'; box-sizing: border-box; }
             .hinschg-portal textarea { min-height: 140px; }
@@ -332,16 +565,81 @@ class HinSchG_Portal {
 			.notice-success {background:#e6ffed;border-left:4px solid #22c55e;color:#14532d;padding:.5em;}
 			.notice-error {background:#fee2e2;border-left:4px solid #ef4444;color:#7f1d1d;padding:.5em;}
 		';
+        
+        // KORRIGIERTE/ERWEITERTE CSS-REGELN FÜR LOGO-ANZEIGE
+        $custom_css .= '
+.hinschg-featured{width:100%;max-height:260px;object-fit:contain;display:block;margin:0 0 .75rem 0;background:#fff}
+
+/* Der äußere Flex-Container für Logo und Text-Block */
+.hinschg-portal .mandant-header{
+    display:flex;
+    align-items:center;
+    gap:1rem; /* Mehr Abstand zwischen Logo und Text */
+    margin:1em 0 1rem 0; 
+    padding: 0; /* Kein Padding, damit der Text-Block die volle Breite nutzen kann */
+}
+
+/* Stil für das Logo */
+.hinschg-portal img.mandant-logo{
+    width:auto;
+    height:50px;
+    max-width:200px;
+    max-height:100px;
+    object-fit:contain;
+    background:#fff;
+    border:1px solid #e5e7eb;
+    padding:4px;
+    border-radius:6px;
+    flex-shrink:0; /* Verhindert, dass das Logo schrumpft */
+}
+
+/* Neuer Wrapper für Name und Zusatzinfos - erhält den ORIGINALEN Block-Stil */
+.hinschg-portal .mandant-text-wrapper {
+    flex-grow: 1; /* Nimmt den restlichen Platz ein */
+    padding: 6px 12px; /* Etwas mehr seitliches Padding */
+    background: linear-gradient(90deg,'.$tcolor.'40,'.$tcolor.'16);
+    border: 1px solid '.$tcolor.'19;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px #ccc8;
+    text-align: left; /* Text linksbündig im Block */
+}
+
+/* Stil für den Namen im Text-Block */
+.hinschg-portal .mandant-text-wrapper .mandant-name {
+    font-weight: 700;
+    font-size: 1.4em; /* Originalgröße wiederhergestellt */
+    line-height: 1.2;
+    color: '.$tcolor.';
+    margin: 0; /* Wichtig: margin entfernen */
+    padding: 0; /* Wichtig: padding entfernen, da es jetzt am Wrapper ist */
+}
+
+/* Stil für die Zusatzinformationen */
+.hinschg-portal .mandant-secondary-info{
+    font-size:.9em;
+    color:#666;
+    margin-top: 5px; /* Kleiner Abstand zum Namen */
+}
+';
+
         wp_add_inline_style('hinschg-portal', $custom_css);
     }
 
 	public function shortcode_hinweisportal($atts, $content = '') {
+        
+        $atts = shortcode_atts(['image' => 1], $atts, 'hinweisportal');
+        $show_image = intval($atts['image']) === 1;
         $tenant_id = isset($_GET['mandant']) ? preg_replace('/[^0-9]/', '', $_GET['mandant']) : '';
         $mandant = (preg_match('/^\d{8}$/', $tenant_id)) ? $this->get_mandant_by_tenant_id($tenant_id) : null;
         $opts = get_option(self::OPTION_KEY, []);
 		$hinschginfo = 'Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken für das oben angegebene Unternehmen. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.';
         ob_start();
         echo '<div class="hinschg-portal">';
+        if ($show_image) {
+            $feat_url = plugins_url('kategorie-whistleblower1.jpg', __FILE__);
+            echo '<img class="hinschg-featured" src="' . esc_url($feat_url) . '" alt="Hinweisgeberschutz" loading="lazy">';
+        }
+
         if (!$mandant) {
 			echo '<div class="intro-text">'.$hinschginfo.'</div>';
             echo '<div class="notice-error"><p>Bitte rufen Sie den Link mit einem gültigen Mandanten-Parameter auf (z. B. <code>?mandant=12345678</code>).</p></div>';
@@ -349,20 +647,49 @@ class HinSchG_Portal {
             return ob_get_clean();
         }
         
-        // Mandantenname und Introtext
-        echo '<div class="mandant-name">' . esc_html($mandant->name) . ' &nbsp; <i class="fa fa-building"></i> ' . esc_html($mandant->ort);
-        // NEU: Webseite-Link im Frontend
-        if (!empty($mandant->website)) {
-            echo ' &nbsp; <a href="' . esc_url($mandant->website) . '" target="_blank" rel="noopener nofollow">' . parse_url($mandant->website, PHP_URL_HOST) . '</a>';
+        // KORRIGIERTER BLOCK FÜR LOGO- UND NAMENSANZEIGE (Wiederherstellung des Block-Stils)
+        
+        // 1. Logo-Daten abrufen
+        $logo_html = '';
+        $logo_id = (int) $mandant->logo_id;
+        if ($logo_id) {
+            $logo_url = wp_get_attachment_url($logo_id);
+            if ($logo_url) {
+                $logo_html = '<img class="mandant-logo" src="' . esc_url($logo_url) . '" alt="' . esc_attr($mandant->name) . ' Logo" loading="lazy" />';
+            }
         }
-        echo '</div>';
+        
+        // 2. Header mit Logo und Text-Wrapper
+        echo '<div class="mandant-header">';
+        echo $logo_html; // Logo anzeigen, falls vorhanden
+        
+        // NEUES WRAPPER-DIV für den Text, um den Block-Stil anzuwenden
+        echo '<div class="mandant-text-wrapper">'; 
+        
+        // Haupt-Name
+        echo '<div class="mandant-name">' . esc_html($mandant->name) . '</div>';
+        
+        // Ort und Webseite
+        echo '<div class="mandant-secondary-info">';
+        echo esc_html($mandant->ort);
+        if (!empty($mandant->website)) {
+            echo ' &nbsp; | &nbsp; <a href="' . esc_url($mandant->website) . '" target="_blank" rel="noopener nofollow">' . parse_url($mandant->website, PHP_URL_HOST) . '</a>';
+        }
+        echo '</div>'; // End mandant-secondary-info
+        
+        echo '</div>'; // End mandant-text-wrapper
+        echo '</div>'; // End mandant-header
+
         echo '<div class="intro-text">'.$hinschginfo.'</div>';
+        
+        // ENDE KORRIGIERTER BLOCK
+        
 		?>
 		<details class="hinweisgesetz-info" style="margin-bottom:1.5em;">
 			<summary>Was ist das Hinweisgeberschutzgesetz?</summary>
 			<div>
 				<p>Das <strong>Hinweisgeberschutzgesetz (HinSchG)</strong> schützt Personen, die Missstände oder Rechtsverstöße in Unternehmen oder Behörden melden – sogenannte Hinweisgeber oder Whistleblower.</p>
-				<p>Es verpflichtet Organisationen ab einer bestimmten Größe, eine <strong>interne Meldestelle</strong> einzurichten, über die Mitarbeitende oder externe Personen sicher und vertraulich Hinweise abgeben können.</p>
+				<p>Es verpflichtet Organisationen ab einer bestimmten Größe, eine <strong>interne Meldestelle</strong> einzurichten, über die Mitarbeitenden oder externe Personen sicher und vertraulich Hinweise abgeben können.</p>
 				<p><em>Kurz gesagt:</em> Dieses Gesetz sorgt dafür, dass Hinweise auf Fehlverhalten vertraulich behandelt werden und Hinweisgeber vor Benachteiligung oder Repressalien geschützt sind.</p>
 			</div>
 		</details>
@@ -521,11 +848,11 @@ class HinSchG_Portal {
             // Read existing metas if present
             $dl_token = get_post_meta($post_id, '_hinschg_dl_token', true);
             $expires  = intval(get_post_meta($post_id, '_hinschg_dl_expires', true));
-            if (empty($dl_token) || empty($expires)) {
+            if (empty($dl_token) || empty($expires) || $expires < time()) { // Re-generate if expired
                 $dl_token = wp_generate_password(20, false, false);
                 $expires  = time() + 7 * 24 * 3600; // 7 Tage validity
-                add_post_meta($post_id, '_hinschg_dl_token',   $dl_token, true);
-                add_post_meta($post_id, '_hinschg_dl_expires', $expires,  true);
+                update_post_meta($post_id, '_hinschg_dl_token',   $dl_token);
+                update_post_meta($post_id, '_hinschg_dl_expires', $expires);
             }
             $dl_url = add_query_arg([
                 'action' => 'hinschg_dl',
@@ -537,16 +864,6 @@ class HinSchG_Portal {
             if (!empty($dl_url)) {
                 $mail_body .= "\nAnhang (7 Tage gültig):\n{$dl_url}\n";
             }
-        }
-		// Download-Link für Anhang (7 Tage gültig) anfügen, falls Anhang existiert
-        if (!empty($attachment_id)) {
-            $dl_url = add_query_arg([
-                'action' => 'hinschg_dl',
-                'post'   => $post_id,
-                'tid'    => $mandant->tenant_id,
-                'token'  => $dl_token,
-            ], admin_url('admin-post.php'));
-            
         }
         $mail_body .= "\n\nDiese Nachricht wurde versendet über das Hinschg-Portal:\n".get_bloginfo('name')."\n".get_bloginfo('url')."\n";
 		wp_mail($mandant->email, $mail_subject, $mail_body, $headers);
@@ -688,10 +1005,10 @@ class HinSchG_Portal {
         $p = get_post($post_id);
         if (!$p || $p->post_type !== 'hinweis') { status_header(404); exit('Not found'); }
 
-        $saved_tid   = get_post_meta($post_id, '_hinschg_tenant_id', true);
-        $saved_token = get_post_meta($post_id, '_hinschg_dl_token', true);
-        $expires     = intval(get_post_meta($post_id, '_hinschg_dl_expires', true));
-        $att_id      = intval(get_post_meta($post_id, '_hinschg_attachment_id', true));
+        $saved_tid   = get_post_meta($p->ID, '_hinschg_tenant_id', true);
+        $saved_token = get_post_meta($p->ID, '_hinschg_dl_token', true);
+        $expires     = intval(get_post_meta($p->ID, '_hinschg_dl_expires', true));
+        $att_id      = intval(get_post_meta($p->ID, '_hinschg_attachment_id', true));
 
         if (!$att_id || !$saved_token || !$expires || time() > $expires) { status_header(410); exit('Link abgelaufen'); }
         if (!hash_equals($saved_tid, $tid) || !hash_equals($saved_token, $token)) { status_header(403); exit('Invalid token'); }
