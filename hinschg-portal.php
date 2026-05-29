@@ -1064,7 +1064,13 @@ class HinSchG_Portal {
             </p>
             <p><strong>Der Einsatz erfolgt auf eigenes Risiko.</strong> Der Autor übernimmt keine Haftung für unmittelbare oder mittelbare Schäden,
             die durch die Nutzung oder Nichtnutzung dieses Plugins entstehen, soweit diese nicht auf vorsätzlichem oder grob fahrlässigem Handeln beruhen.</p>
-            <p>Durch die Nutzung des Plugins erkennen Sie diesen Haftungsausschluss ausdrücklich an.</p>
+            <p><b>Durch die Nutzung des Plugins erkennen Sie diesen Haftungsausschluss ausdrücklich an.</b></p>
+			<p>Das Hinweisgeberschutzportal (Plugin) wird von der GWS mbH ausschließlich als technische Softwarelösung zur Verfügung gestellt.<br>
+			Der Anbieter erbringt keine Rechtsberatung und übernimmt insbesondere keine Funktion als interne Meldestelle, Ombudsperson, Compliance- oder Ermittlungsstelle. Auch gewährleistet er nicht, dass die Nutzung des Portals allein zur vollständigen Erfüllung gesetzlicher Anforderungen geeignet ist, und dass die im Portal abgebildeten Prozesse den individuellen regulatorischen Anforderungen des Kunden entsprechen. Es obliegt dem Kunden, die rechtliche Zulässigkeit und Angemessenheit seiner Prozesse, Maßnahmen und Entscheidungen eigenverantwortlich zu prüfen und gegebenenfalls qualifizierte Rechtsberatung einzuholen.</p>
+			<p> Die GWS behält sich vor, Funktionen, technische Spezifikationen, Sicherheitsmaßnahmen und Inhalte des Portals jederzeit angemessen weiterzuentwickeln, anzupassen oder zu ändern, soweit dadurch keine wesentlichen vertraglichen Hauptleistungspflichten beeinträchtigt werden.
+			Gesetzesänderungen, behördliche Anforderungen oder technische Entwicklungen können Anpassungen des Portals erforderlich machen.</p>
+			<p>Der Anbieter haftet nur bei Vorsatz, grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper oder Gesundheit. Bei leicht fahrlässiger Verletzung wesentlicher Vertragspflichten („Kardinalpflichten“) ist die Haftung auf den vertragstypischen, vorhersehbaren Schaden begrenzt. Im Übrigen ist die Haftung ausgeschlossen.</p>
+
         </div>
         <?php
     }
