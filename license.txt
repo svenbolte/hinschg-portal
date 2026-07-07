@@ -1,0 +1,56 @@
+# Hinschg-Portal Premium – Lizenzinformationen
+
+## Kommerzielle Lizenz
+
+HinschG-Portal Premium wird als kommerzielle Software bereitgestellt.
+
+Für die Nutzung der enthaltenen Premium-Module und Funktionen ist eine gültige Jahreslizenz erforderlich. Die Lizenz gewährt dem Lizenznehmer ein einfaches, nicht ausschließliches und nicht übertragbares Nutzungsrecht an der lizenzierten Software für die Dauer einer aktiven Lizenz.
+
+Die Jahreslizenz umfasst insbesondere:
+
+- die Nutzung der lizenzierten Premium-Module,
+- den Download freigegebener Softwareversionen,
+- den Zugriff auf neu freigegebene Module innerhalb des erworbenen Produktumfangs.
+
+Nicht Bestandteil der Lizenz sind insbesondere Hosting-, Cloud-, SaaS- oder Managed Services, Supportleistungen, Beratungsleistungen, garantierte Updates, Sicherheitsupdates oder zukünftige Weiterentwicklungen, sofern diese nicht ausdrücklich schriftlich vereinbart wurden.
+
+## Urheberrecht
+
+Alle von WPDoodlez entwickelten Erweiterungen, Premium-Module, Vorlagen, Grafiken, Designs, Dokumentationen sowie sonstigen originären Bestandteile der Software unterliegen dem Urheberrecht des Herstellers.
+
+Sämtliche Rechte an diesen Bestandteilen verbleiben bei WPDoodlez.
+
+Der Name „HinschG-Portal“ sowie Logos und Kennzeichen können marken- und urheberrechtlich geschützt sein.
+
+## Drittanbieter- und Open-Source-Komponenten
+
+HinschG-Portal enthält und/oder basiert teilweise auf Software anderer Open-Source-Projekte.
+
+Insbesondere wird die Software als Plugin für WordPress betrieben und enthält Programmteile, die ursprünglich aus einem auf GitHub veröffentlichten Open-Source-Projekt stammen.
+
+Für diese Softwarebestandteile gelten weiterhin ausschließlich die jeweiligen ursprünglichen Open-Source-Lizenzbedingungen.
+
+Diese Lizenz schränkt die Rechte aus den jeweiligen Open-Source-Lizenzen weder ein noch ersetzt oder verändert sie diese.
+
+## WordPress
+
+WordPress ist freie Software und wird unter der GNU General Public License (GPL) veröffentlicht.
+
+Weitere Informationen:
+https://wordpress.org/
+
+## Hinweis zu Open Source
+
+Soweit einzelne Softwarebestandteile Open-Source-Lizenzen unterliegen, gelten für diese Bestandteile weiterhin die jeweiligen Original-Lizenzbedingungen.
+
+Die in dieser Datei beschriebenen kommerziellen Lizenzbedingungen gelten ausschließlich für die von WPDoodlez entwickelten Premium-Erweiterungen, Module, Vorlagen, Dokumentationen, Designs sowie sonstigen urheberrechtlich geschützten Bestandteile der Software, soweit die jeweiligen Open-Source-Lizenzen dem nicht entgegenstehen.
+
+## Gewährleistungsausschluss
+
+Die Software wird ausschließlich als Download bereitgestellt.
+
+Die Bereitstellung erfolgt ausdrücklich „wie besehen“ („AS IS“).
+
+Soweit gesetzlich zulässig erfolgt die Bereitstellung ohne ausdrückliche oder stillschweigende Gewährleistungen oder Garantien.
+
+Einzelheiten zum Leistungsumfang, zu Haftungsbeschränkungen, Ausschlüssen sowie zu den Vertragsbedingungen ergeben sich aus der jeweiligen Produktdokumentation und den vertraglichen Vereinbarungen.

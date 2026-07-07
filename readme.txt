@@ -2,11 +2,8 @@
 
 Contributors: Sven Bolte
 Author: ChatGPT and PBMod
-Author URI: https://github.com/svenbolte/
-Plugin URI: https://github.com/svenbolte/hinschg-portal/
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
-License: GPLv2 or later
-License URI: https://www.gnu.org/licenses/gpl-2.0.html
+License: Commercial License (includes third-party Open Source components; see license.txt)
 Version: 1.2.5
 Requires at least: 6.0
 Tested up to: 6.8.3

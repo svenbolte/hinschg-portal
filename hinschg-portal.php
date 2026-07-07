@@ -634,6 +634,10 @@ class HinSchG_Portal {
         $opts = get_option(self::OPTION_KEY, []);
 		$hinschginfo = 'Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken für das oben angegebene Unternehmen. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.';
         ob_start();
+
+
+echo $this->hs_show_disclaimer();
+
         echo '<div class="hinschg-portal">';
         if ($show_image) {
             $feat_url = plugins_url('kategorie-whistleblower1.jpg', __FILE__);
@@ -1037,8 +1041,41 @@ class HinSchG_Portal {
         );
     }
 
+
+	// ----------- Rechtshinweise für Denksport, Anwendungen, auch für Compliance Tools -----------------
+	public function hs_show_disclaimer() {
+		return '<details class="noprint"><summary>📜 Rechtliche Hinweise & Nutzungsbedingungen</summary>
+		<div>
+		<p><b>Test-, Demo- und Eigeninstallationen:</b><br>
+		Die bereitgestellten Anwendungen, Tools, Spiele, Vorlagen und Module dienen ausschließlich Informations-, Demonstrations-, Lern-, Test- und Präsentationszwecken. Bitte geben Sie keine vertraulichen, personenbezogenen oder produktiven Unternehmensdaten ein. Eingegebene Inhalte können zu Demonstrations-, Entwicklungs-, Test- oder Fehleranalysezwecken verarbeitet und gespeichert werden. Es besteht kein Anspruch auf Vertraulichkeit, dauerhafte Speicherung oder Verfügbarkeit der eingegebenen Daten.</p>
+		<p>Für den produktiven Einsatz wird eine Installation innerhalb der eigenen geschützten IT-, Cloud- oder Intranet-Umgebung empfohlen. Sofern Quellcode, Installationspakete oder Softwarekomponenten bereitgestellt werden, erfolgen Installation, Konfiguration, Anpassung, Updates und Betrieb ausschließlich in eigener Verantwortung des Nutzers. Der produktive Einsatz erfolgt auf eigenes Risiko.</p>
+		<p><b>Technische Softwarelösung:</b><br>
+		Die Software wird ausschließlich als technische Softwarelösung bereitgestellt. Der Anbieter betreibt keine Cloud-Plattform, keine SaaS-Lösung und keine Managed Services. Sämtliche Module – einschließlich des Hinweisgeber-Portals – werden ausschließlich innerhalb der IT-Infrastruktur des Nutzers betrieben.</p>
+		<p>Der Nutzer ist insbesondere verantwortlich für Installation, Konfiguration, Betrieb, Datensicherung, Benutzer- und Berechtigungsverwaltung, Verfügbarkeit, IT-Sicherheit, Datenschutzkonfigurationen, Updates sowie die Einhaltung gesetzlicher und regulatorischer Anforderungen.</p>
+		<p>Die Software unterstützt organisatorische, dokumentationsbezogene und administrative Prozesse. Sie ersetzt insbesondere keine Rechts-, Datenschutz-, Compliance-, Steuer-, Unternehmens- oder sonstige Fachberatung, keine Auditierung, Zertifizierung oder sonstige fachliche Prüfung. Dies gilt ausdrücklich auch für bereitgestellte Vorlagen, Muster, Checklisten, Dokumente, Beispielprüfungen, Quizfragen sowie automatisch erzeugte Inhalte.</p>
+		<p><b>KI-Hinweis:</b><br>
+		Inhalte, Vorlagen und Anwendungen können ganz oder teilweise unter Einsatz Künstlicher Intelligenz erstellt worden sein. Trotz sorgfältiger Prüfung können Fehler, Ungenauigkeiten, unvollständige Ergebnisse oder fehlerhafte Schlussfolgerungen auftreten.</p>
+		<ul>
+		<li>Automatisch erzeugte Dokumente, Listen, Vorlagen, Berichte, Prüfungen, Analysen, Auswertungen, Zuordnungen, Kontaktdaten oder Klassifizierungen können unvollständig, fehlerhaft oder veraltet sein.</li>
+		<li>Alle erzeugten Ergebnisse sind vor einer produktiven Verwendung eigenverantwortlich auf Richtigkeit, Vollständigkeit, Aktualität, rechtliche Zulässigkeit und Eignung für den jeweiligen Einsatzzweck zu prüfen.</li>
+		<li>Der Anbieter übernimmt keine Verantwortung für Entscheidungen, Datenverarbeitungen oder Maßnahmen, die auf Grundlage bereitgestellter oder erzeugter Inhalte getroffen werden.</li>
+		<li>Es wird keine Gewähr für Richtigkeit, Vollständigkeit, Aktualität, Verfügbarkeit, Funktionsfähigkeit, Kompatibilität, rechtliche Verwendbarkeit oder Eignung für einen bestimmten Zweck übernommen.</li>
+		</ul>
+		<p><b>Hinweisgeber-Portal:</b><br>
+		Das Hinweisgeber-Portal stellt ausschließlich eine technische Plattform zur Entgegennahme und Verwaltung von Meldungen bereit. Der Anbieter übernimmt keine Funktion als interne Meldestelle, Ombudsperson, Compliance-Stelle, Ermittlungsstelle oder Rechtsberater.</p>
+		<p><b>Open Source & Lizenzen:</b><br>
+		Einzelne Plugins oder Softwarebestandteile können ganz oder teilweise auf Open-Source-Projekten basieren oder Open-Source-Komponenten enthalten. Für diese Bestandteile gelten die jeweiligen Original-Lizenzbedingungen. Ergänzende Hinweise ergeben sich aus den jeweiligen README-, LICENSE- oder sonstigen Dokumentationsdateien der Plugins.</p>
+		<p><b>Markenhinweis:</b><br>
+		Alle genannten oder erkennbaren Marken, Produktnamen, Logos, Spielprinzipien oder Konzepte bleiben Eigentum ihrer jeweiligen Rechteinhaber. Dieses Angebot steht – soweit nicht ausdrücklich angegeben – in keiner Verbindung zu den jeweiligen Markeninhabern oder Rechteinhabern.</p>
+		<p><b>Haftung:</b><br>
+		Die Bereitstellung erfolgt ausdrücklich &bdquo;AS IS&ldquo; (&bdquo;wie besehen&ldquo;).  Der Anbieter übernimmt keine Gewähr für Fehlerfreiheit, unterbrechungsfreien Betrieb oder die Einhaltung gesetzlicher und regulatorischer Anforderungen. Die Haftung ist auf Vorsatz und grobe Fahrlässigkeit beschränkt. Bei leicht fahrlässiger Verletzung wesentlicher Vertragspflichten (Kardinalpflichten) ist die Haftung auf den vertragstypischen, vorhersehbaren Schaden begrenzt. Die Haftung wegen Verletzung von Leben, Körper oder Gesundheit sowie nach zwingenden gesetzlichen Vorschriften bleibt unberührt.</p>
+		<p><a target="_blank" href="'.esc_url( home_url( '/impressum/' ) ).'">Ausführliche rechtliche Hinweise, Lizenz- und Nutzungsbedingungen</a></p>
+		</div></details>';
+	}
+
+
     public function render_legal_page() {
-        ?>
+	?>
         <div class="wrap">
             <h1>Rechtliches &amp; Haftung</h1>
             <h2>Hintergrund des Hinweisgeberschutzgesetzes (HinSchG)</h2>
@@ -1054,23 +1091,7 @@ class HinSchG_Portal {
                 <li>Möglichkeit zur anonymen Hinweisabgabe</li>
                 <li>Sanktionen bei Behinderung oder Repressalien gegen Hinweisgeber</li>
             </ul>
-
-            <h2>Haftungsausschluss</h2>
-            <p><strong>Dieses Plugin stellt ein technisches Hilfsmittel zur Umsetzung der Anforderungen des Hinweisgeberschutzgesetzes bereit.</strong></p>
-            <p>
-                Es ersetzt keine rechtliche Beratung und bietet keine Gewähr für die Vollständigkeit oder rechtliche Konformität der Implementierung
-                im jeweiligen Einzelfall. Die Einrichtung, rechtliche Bewertung und der datenschutzkonforme Betrieb der Meldeplattform liegen
-                in der alleinigen Verantwortung des Betreibers.
-            </p>
-            <p><strong>Der Einsatz erfolgt auf eigenes Risiko.</strong> Der Autor übernimmt keine Haftung für unmittelbare oder mittelbare Schäden,
-            die durch die Nutzung oder Nichtnutzung dieses Plugins entstehen, soweit diese nicht auf vorsätzlichem oder grob fahrlässigem Handeln beruhen.</p>
-            <p><b>Durch die Nutzung des Plugins erkennen Sie diesen Haftungsausschluss ausdrücklich an.</b></p>
-			<p>Das Hinweisgeberschutzportal (Plugin) wird von der GWS mbH ausschließlich als technische Softwarelösung zur Verfügung gestellt.<br>
-			Der Anbieter erbringt keine Rechtsberatung und übernimmt insbesondere keine Funktion als interne Meldestelle, Ombudsperson, Compliance- oder Ermittlungsstelle. Auch gewährleistet er nicht, dass die Nutzung des Portals allein zur vollständigen Erfüllung gesetzlicher Anforderungen geeignet ist, und dass die im Portal abgebildeten Prozesse den individuellen regulatorischen Anforderungen des Kunden entsprechen. Es obliegt dem Kunden, die rechtliche Zulässigkeit und Angemessenheit seiner Prozesse, Maßnahmen und Entscheidungen eigenverantwortlich zu prüfen und gegebenenfalls qualifizierte Rechtsberatung einzuholen.</p>
-			<p> Die GWS behält sich vor, Funktionen, technische Spezifikationen, Sicherheitsmaßnahmen und Inhalte des Portals jederzeit angemessen weiterzuentwickeln, anzupassen oder zu ändern, soweit dadurch keine wesentlichen vertraglichen Hauptleistungspflichten beeinträchtigt werden.
-			Gesetzesänderungen, behördliche Anforderungen oder technische Entwicklungen können Anpassungen des Portals erforderlich machen.</p>
-			<p>Der Anbieter haftet nur bei Vorsatz, grober Fahrlässigkeit sowie bei Verletzung von Leben, Körper oder Gesundheit. Bei leicht fahrlässiger Verletzung wesentlicher Vertragspflichten („Kardinalpflichten“) ist die Haftung auf den vertragstypischen, vorhersehbaren Schaden begrenzt. Im Übrigen ist die Haftung ausgeschlossen.</p>
-
+		<?php 	echo $this->hs_show_disclaimer(); ?>
         </div>
         <?php
     }
