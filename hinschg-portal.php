@@ -1,6 +1,6 @@
 <?php
 /**
-Plugin Name: HinSchG Portal (Multi-Mandant)
+Plugin Name: HinSchG Portal
 Description: Hinweisgeberschutz-Portal mit Mandantenverwaltung (8-stellige ID via URL-Parameter mandant=XXXXXXXX) und anonymer Hinweisabgabe.
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
 Author: ChatGPT and PBMod
