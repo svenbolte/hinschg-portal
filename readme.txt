@@ -4,7 +4,7 @@ Contributors: Sven Bolte
 Author: ChatGPT and PBMod
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
 License: Commercial License (includes third-party Open Source components; see license.txt)
-Version: 1.2.5
+Version: 1.5.0
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
@@ -23,6 +23,9 @@ Das HinSchG Portal (Multi-Mandant) ist ein WordPress-Plugin zur Umsetzung der An
 * Private Speicherung der Hinweise als Beitragstyp „Hinweis“
 * DSGVO-konforme Verarbeitung (keine IP-Speicherung, keine Cookies)
 * Responsives Frontend-Design
+* Anonymes Zwei-Wege-Postfach ohne E-Mail-Adresse
+* Kategorien und interne Risikoklassifikation
+* Druckoptimierter Compliance-Nachweis / Fallakte mit Audit-Verlauf
 
 == Installation ==
 
@@ -97,6 +100,14 @@ Der Anbieter haftet nur bei Vorsatz, grober Fahrlässigkeit sowie bei Verletzung
 3. **Hinweisübersicht:** private Beiträge mit Metadaten (Mandant, Vorgangs-ID, Upload).
 
 == Changelog ==
+
+= 1.5.0 =
+* Neu: Anonymes Zwei-Wege-Postfach zwischen Hinweisgeber und Meldestelle.
+* Neu: Kategorien im Meldeformular und nachträgliche Klassifikation im Backend.
+* Neu: Interne Risikoklassifikation (ungeprüft, niedrig, mittel, hoch, kritisch).
+* Neu: Audit-Verlauf für Status-, Kategorie-, Risiko- und Postfach-Ereignisse.
+* Neu: Druckoptimierte Compliance-Fallakte mit Browser-Druck / PDF-Speichern.
+* Neu: E-Mail-Hinweis an den Mandanten bei neuer anonymer Postfach-Nachricht; Nachrichteninhalt bleibt im Portal.
 
 
 = 1.2.2 =
