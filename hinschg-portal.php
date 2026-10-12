@@ -2256,7 +2256,9 @@ function hinschg_portal_deadlines_admin_page() {
         }
     }
     hinschg_portal_retention_handle_action();
-    $items = get_posts(['post_type'=>'hinweis','post_status'=>'private','numberposts'=>500,'orderby'=>'date','order'=>'DESC']);
+    // Refresh the dashboard counts without sending an email.
+    hinschg_portal_daily_review(false);
+    $items = get_posts(['post_type'=>'hinweis','post_status'=>'private','numberposts'=>-1,'orderby'=>'date','order'=>'DESC']);
     echo '<div class="wrap"><h1>HinSchG – Fristen und Aufbewahrung</h1><p>Fristen sind Orientierungshilfen. Eine Eingangsbestätigung muss tatsächlich versendet werden, bevor sie hier dokumentiert wird. Löschkandidaten werden nicht automatisch gelöscht; rechtliche Ausnahmen und Backups sind vor Löschung zu prüfen.</p>';
     // Show urgent, actionable cases first, without disclosing case details in notifications.
     $items = array_values(array_filter($items, function($item) { return current_user_can('edit_post', $item->ID); }));
@@ -2273,6 +2275,9 @@ function hinschg_portal_deadlines_admin_page() {
     };
     usort($items, function($a, $b) use ($priority) { return $priority($a) <=> $priority($b); });
     $urgent = count(array_filter($items, function($item) use ($priority) { return $priority($item) === 0; }));
+    $review_counts = get_option('hinschg_portal_review_counts', []);
+    $retention_due = max(0, (int) ($review_counts['retention'] ?? 0));
+    echo '<p><strong>'.esc_html($retention_due).' fällige Aufbewahrungsprüfungen</strong> (separat von den Fristen).</p>';
     echo '<p><strong>'.esc_html($urgent).' Vorgänge mit überfälliger Eingangsbestätigung oder Rückmeldefrist</strong> – dringende Vorgänge stehen oben. Die tatsächliche Rückmeldung ist unabhängig davon zu dokumentieren.</p>';
     echo '<table class="widefat striped"><thead><tr><th>Vorgang</th><th>7-Tage-Frist</th><th>Rückmeldung</th><th>Löschprüfung</th><th>Aktion</th></tr></thead><tbody>';
     foreach ($items as $item) {
@@ -2293,7 +2298,7 @@ function hinschg_portal_deadlines_admin_page() {
         }
         echo '</td></tr>';
     }
-    echo '</tbody></table><p>Es werden maximal 500 Vorgänge angezeigt. Keine automatische Löschung aktiviert.</p>';
+    echo '</tbody></table><p>Es werden alle berechtigten Vorgänge angezeigt. Keine automatische Löschung aktiviert.</p>';
     // Minimal, non-identifying deletion receipt: no report content, case ID or tenant ID.
     $deletions = get_option('hinschg_portal_retention_deletion_log', []);
     if (!is_array($deletions)) $deletions = [];
@@ -2324,7 +2329,7 @@ add_action('init', 'hinschg_portal_schedule_daily_review');
 register_deactivation_hook(__FILE__, function() {
     wp_clear_scheduled_hook('hinschg_portal_daily_review');
 });
-function hinschg_portal_daily_review() {
+function hinschg_portal_daily_review($send_mail = true) {
     $counts = ['receipt' => 0, 'feedback' => 0, 'retention' => 0];
     $now = time();
     $page = 1;
@@ -2341,7 +2346,7 @@ function hinschg_portal_daily_review() {
     } while (count($ids) === 100);
     update_option('hinschg_portal_review_counts', $counts, false);
     update_option('hinschg_portal_review_checked_at', $now, false);
-    if (array_sum($counts) === 0) return;
+    if (!$send_mail || array_sum($counts) === 0) return;
     $last_sent = (int) get_option('hinschg_portal_review_last_mail', 0);
     if ($last_sent && $last_sent > $now - DAY_IN_SECONDS) return;
     $recipient = get_option('admin_email');
@@ -2353,10 +2358,21 @@ function hinschg_portal_daily_review() {
 add_action('hinschg_portal_daily_review', 'hinschg_portal_daily_review');
 add_action('admin_notices', function() {
     if (!current_user_can('manage_options')) return;
+    // Only show this notice inside the HinSchG portal, never on unrelated WP screens.
+    $screen = get_current_screen();
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    $is_portal = ($page === 'hinschg-portal' || strpos($page, 'hinschg-') === 0)
+        || ($screen && in_array($screen->post_type, ['hinweis'], true));
+    if (!$is_portal) return;
     $counts = get_option('hinschg_portal_review_counts', []);
-    if (!is_array($counts) || array_sum(array_map('intval', $counts)) < 1) return;
+    if (!is_array($counts)) return;
+    $receipt = max(0, (int) ($counts['receipt'] ?? 0));
+    $feedback = max(0, (int) ($counts['feedback'] ?? 0));
+    $retention = max(0, (int) ($counts['retention'] ?? 0));
+    if ($receipt + $feedback + $retention === 0) return;
     $url = admin_url('admin.php?page=hinschg-fristen');
-    echo '<div class="notice notice-warning"><p>HinSchG-Portal: Fristen oder Aufbewahrungsprüfungen sind offen. <a href="'.esc_url($url).'">Fristenübersicht öffnen</a>. Die tägliche Prüfung wird durch WP-Cron ausgelöst.</p></div>';
+    $details = sprintf('%d überfällige Eingangsbestätigungen, %d fällige Rückmeldefristen, %d fällige Aufbewahrungsprüfungen.', $receipt, $feedback, $retention);
+    echo '<div class="notice notice-warning"><p><strong>HinSchG-Portal:</strong> '.esc_html($details).' <a href="'.esc_url($url).'">Fristenübersicht öffnen</a>. Stand: letzte Prüfung durch WP-Cron oder Aufruf der Fristenübersicht.</p></div>';
 });
 
 
