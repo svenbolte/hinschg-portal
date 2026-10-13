@@ -39,7 +39,7 @@ function hinschg_portal_activate() {
         tenant_id CHAR(8) NOT NULL UNIQUE,
         name VARCHAR(190) NOT NULL,
         ort VARCHAR(190) NULL,
-        email VARCHAR(190) NOT NULL,
+        email VARCHAR(190) NOT NULL DEFAULT '',
         website VARCHAR(190) NULL,
         logo_id BIGINT UNSIGNED NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -106,7 +106,7 @@ function hinschg_portal_register_cpt_hinweis() {
         'label' => __('Hinweise', 'hinschg-portal'),
         'public' => false,
         'show_ui' => true,
-        'show_in_menu' => 'hinschg-portal', // als Submenü unter HinSchG Portal
+        'show_in_menu' => false, // Keine automatische CPT-Menüeintragung; nur Ansprechpartner-Menü
         'show_in_admin_bar' => false,       // kein "Neu" oben in der Admin-Bar
         'capability_type' => ['hinweis', 'hinweise'],
         'map_meta_cap' => true,
@@ -125,32 +125,56 @@ function hinschg_portal_register_cpt_hinweis() {
 
 /* ===================== Admin: Mandanten ===================== */
 
+function hinschg_is_case_contact($user_id = 0) {
+    $user = get_userdata($user_id ?: get_current_user_id());
+    return $user instanceof WP_User && in_array('hinschg_ansprechpartner', (array) $user->roles, true);
+}
+function hinschg_require_case_contact() {
+    if (!hinschg_is_case_contact()) wp_die(esc_html__('Nur HinSchG-Ansprechpartner sind fuer diesen Bereich berechtigt.', 'hinschg-portal'), '', ['response' => 403]);
+}
 function hinschg_portal_register_admin_menu() {
     add_menu_page(
         __('HinSchG Portal', 'hinschg-portal'),
         __('HinSchG Portal', 'hinschg-portal'),
         'manage_options',
         'hinschg-portal',
-        'hinschg_portal_render_cockpit_page',
+        'hinschg_portal_render_mandanten_page',
         'dashicons-shield'
     );
-    add_submenu_page('hinschg-portal', __('Cockpit', 'hinschg-portal'), __('Cockpit', 'hinschg-portal'), 'manage_options', 'hinschg-portal', 'hinschg_portal_render_cockpit_page');
-    add_submenu_page('hinschg-portal', __('Mandanten', 'hinschg-portal'), __('Mandanten', 'hinschg-portal'), 'manage_options', 'hinschg-portal-mandanten', 'hinschg_portal_render_mandanten_page');
-    add_submenu_page('hinschg-portal', __('Einstellungen', 'hinschg-portal'), __('Einstellungen', 'hinschg-portal'), 'manage_options', 'hinschg-portal-settings', 'hinschg_portal_render_settings_page');
+    
+    add_submenu_page('hinschg-portal', __('Mandanten', 'hinschg-portal'), __('Mandanten', 'hinschg-portal'), 'manage_options', 'hinschg-portal', 'hinschg_portal_render_mandanten_page');
+    add_submenu_page('hinschg-portal', __('Einstellungen', 'hinschg-portal'), __('Einstellungen', 'hinschg-portal'), 'manage_options', 'hinschg-portal-einstellungen', 'hinschg_portal_render_settings_page');
+
+    // Eine einzige Mandanten-Seite: Hauptmenue und Untermenue verwenden denselben Slug.
     hinschg_portal_register_legal_page();
 }
 
-function hinschg_portal_render_cockpit_page() {
-    if (!current_user_can('manage_options') && !hinschg_is_contact_only()) {
-        return;
+function hinschg_portal_render_contact_tenant_info() {
+    if (!hinschg_is_case_contact()) return;
+    $ids = hinschg_allowed_tenants();
+    echo '<div class="notice notice-info" style="padding:12px 16px;margin:18px 0"><h2>Meine Mandanten und Portal-Links</h2>';
+    if (!$ids) echo '<p>Kein Mandant zugewiesen. Bitte die Administration kontaktieren.</p>';
+    foreach ($ids as $id) {
+        $tenant = hinschg_portal_get_mandant_by_tenant_id($id);
+        if (!$tenant) continue;
+        $url = add_query_arg('mandant', $id, home_url('/hinweis/'));
+        echo '<p><strong>' . esc_html($tenant->name) . '</strong> (ID: ' . esc_html($id) . ')';
+        if (!empty($tenant->ort)) echo ' – ' . esc_html($tenant->ort);
+        echo '</p><p><label>Portal-Link: <input type="url" readonly style="width:min(600px,75%)" value="' . esc_attr($url) . '" onclick="this.select()" /></label> ';
+        echo '<button type="button" class="button hinschg-copy-portal" data-url="' . esc_attr($url) . '">Link kopieren</button> <a href="' . esc_url($url) . '" target="_blank" rel="noopener noreferrer">Portal öffnen</a></p>';
     }
+    echo '<script>document.querySelectorAll(".hinschg-copy-portal").forEach(function(b){b.addEventListener("click",function(){var u=b.getAttribute("data-url");if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(u).then(function(){b.textContent="Kopiert";});}else{var i=b.parentNode.querySelector("input");i.select();document.execCommand("copy");b.textContent="Kopiert";}});});</script></div>';
+}
+function hinschg_portal_render_cockpit_page() {
+    hinschg_require_case_contact();
+    hinschg_portal_render_contact_tenant_info();
 
     global $wpdb;
 
     // Enforce the same case-level tenant permissions for every dashboard metric.
     $scope_sql = '';
     $scope_ids = [];
-    if (!current_user_can('manage_options')) {
+    if (true) {
         $tenants = hinschg_allowed_tenants();
         if ($tenants) {
             $scope_ids = get_posts([
@@ -209,7 +233,7 @@ function hinschg_portal_render_cockpit_page() {
         'posts_per_page' => 8,
         'orderby' => 'date',
         'order' => 'DESC',
-        'post__in' => !current_user_can('manage_options') ? ($scope_ids ?: [0]) : [],
+        'post__in' => ($scope_ids ?: [0]),
     ]);
 
     $tenant_rows = $wpdb->get_results(
@@ -415,7 +439,7 @@ function hinschg_portal_render_mandanten_page() {
                 <?php echo $success_msg; ?>
                 <h2><?php echo esc_html($m->name); ?> (<?php echo esc_html($m->tenant_id); ?>)</h2>
 
-                <a href="<?php echo esc_url( remove_query_arg(['edit', 'updated'], admin_url('admin.php?page=hinschg-portal-mandanten')) ); ?>" class="button">&laquo; Zurück zur Mandanten-Übersicht</a>
+                <a href="<?php echo esc_url( remove_query_arg(['edit', 'updated'], admin_url('admin.php?page=hinschg-portal')) ); ?>" class="button">&laquo; Zurück zur Mandanten-Übersicht</a>
 
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top: 20px;">
                     <input type="hidden" name="action" value="hinschg_save_logo" />
@@ -516,28 +540,27 @@ function hinschg_portal_render_mandanten_page() {
         
         <?php // Formular zum Anlegen/Bearbeiten eines Mandanten
         if (isset($_GET['updated']) && $_GET['updated'] === '1') { echo '<div class="updated notice"><p>Mandant gespeichert.</p></div>'; }
+        if (isset($_GET['created']) && $_GET['created'] === '1') {
+            echo '<div class="notice notice-success" style="padding:12px 16px"><h2>Schritt 2 von 2: HinSchG-Ansprechpartner zuweisen</h2><p>Der Mandant wurde angelegt. Legen Sie jetzt einen Benutzer mit der Rolle HinSchG-Ansprechpartner an und weisen Sie ihm diesen Mandanten zu. Alternativ können Sie einen bestehenden Benutzer bearbeiten.</p><p><a class="button button-primary" href="' . esc_url(admin_url('user-new.php?role=hinschg_ansprechpartner')) . '">HinSchG-Ansprechpartner anlegen</a> <a class="button" href="' . esc_url(admin_url('users.php')) . '">Bestehenden Benutzer zuweisen</a></p><p>Bis zur Zuweisung erhält niemand eine Benachrichtigung für diesen Mandanten.</p></div>';
+        }
         if (isset($_GET['deleted'])) { echo '<div class="updated notice"><p>Mandant gelöscht.</p></div>'; }
         if (isset($_GET['error'])) { 
-            $msg = ($_GET['error'] === 'id') ? 'Die ID muss 8-stellig und numerisch sein.' : 'Die E-Mail-Adresse ist ungültig.';
+            $msg = 'Die Mandanten-ID ist ungültig.';
             echo '<div class="error notice"><p>Fehler: ' . esc_html($msg) . '</p></div>'; 
         }
         ?>
         
         <?php if (!$show_mandant_form): ?>
-            <p><a class="button button-primary" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-portal-mandanten','new'=>'1'], admin_url('admin.php'))); ?>">+ Neuen Mandanten anlegen</a></p>
+            <p><a class="button button-primary" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-portal','new'=>'1'], admin_url('admin.php'))); ?>">+ Neuen Mandanten anlegen</a></p>
         <?php else: ?>
         <h2><?php echo $edit_data ? 'Mandanten bearbeiten' : 'Neuen Mandanten anlegen'; ?></h2>
         <?php if (!$edit_data): ?>
-        <div class="notice notice-info" style="margin: 12px 0 18px; padding: 12px 16px; border-left: 4px solid #3858d6;">
-            <strong><?php esc_html_e('Nach dem Anlegen eines Mandanten: Ansprechpartner zuweisen', 'hinschg-portal'); ?></strong>
-            <div>
-                <p><?php esc_html_e('Unter Benutzer → Neu hinzufügen einen Benutzer mit der Rolle „HinSchG-Ansprechpartner“ anlegen. Anschließend im Benutzerprofil unter „HinSchG – Mandanten“ einen oder mehrere Mandanten auswählen und speichern. Bereits vorhandene Benutzer können dort ebenfalls zugeordnet werden.', 'hinschg-portal'); ?></p>
-                <p><a class="button button-secondary" href="<?php echo esc_url(admin_url('user-new.php?role=hinschg_ansprechpartner')); ?>"><?php esc_html_e('Benutzer anlegen', 'hinschg-portal'); ?></a> <a href="<?php echo esc_url(admin_url('users.php')); ?>"><?php esc_html_e('Bestehende Benutzer verwalten', 'hinschg-portal'); ?></a></p>
-                <p><em><?php esc_html_e('WordPress-Administratoren haben Zugriff auf alle Mandanten, ohne gesonderte Zuordnung.', 'hinschg-portal'); ?></em></p>
-            </div>
+        <div class="notice notice-info" style="margin:12px 0 18px;padding:12px 16px">
+            <strong>Schritt 1 von 2: Mandanten anlegen</strong>
+            <p>Nach dem Speichern erscheint Schritt 2: HinSchG-Ansprechpartner anlegen oder vorhandenen Benutzer zuweisen. Nur zugewiesene Ansprechpartner erhalten Benachrichtigungen.</p>
         </div>
         <?php endif; ?>
-        <p><a href="<?php echo esc_url(admin_url('admin.php?page=hinschg-portal-mandanten')); ?>" class="button">Abbrechen / zurück zur Übersicht</a></p>
+        <p><a href="<?php echo esc_url(admin_url('admin.php?page=hinschg-portal')); ?>" class="button">Abbrechen / zurück zur Übersicht</a></p>
         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom: 20px;">
             <input type="hidden" name="action" value="hinschg_save_mandant" />
             <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(HINSCHG_PORTAL_NONCE_ACTION)); ?>"/>
@@ -551,7 +574,13 @@ function hinschg_portal_render_mandanten_page() {
             <div class="hinschg-mandant-fields">
                 <div class="hinschg-mandant-field">
                     <label for="tenant_id"><?php _e('ID (8-stellig, nur Zahlen)', 'hinschg-portal'); ?></label>
-                    <input type="text" id="tenant_id" name="tenant_id" required pattern="[0-9]{8}" maxlength="8" placeholder="12345678" value="<?php echo esc_attr($edit_data ? $edit_data->tenant_id : ''); ?>" <?php echo $edit_data ? 'readonly' : ''; ?>/>
+                    <?php if ($edit_data): ?>
+                    <input type="text" id="tenant_id" value="<?php echo esc_attr($edit_data->tenant_id); ?>" readonly />
+                    <input type="hidden" name="tenant_id" value="<?php echo esc_attr($edit_data->tenant_id); ?>" />
+                    <?php else: ?>
+                    <input type="text" id="tenant_id" value="Wird beim Speichern automatisch vergeben" readonly />
+                    <p class="description">Eindeutige achtstellige Mandanten-ID, automatisch generiert.</p>
+                    <?php endif; ?>
                 </div>
                 <div class="hinschg-mandant-field">
                     <label for="name"><?php _e('Name', 'hinschg-portal'); ?></label>
@@ -560,10 +589,6 @@ function hinschg_portal_render_mandanten_page() {
                 <div class="hinschg-mandant-field">
                     <label for="ort"><?php _e('Ort', 'hinschg-portal'); ?></label>
                     <input type="text" id="ort" name="ort" placeholder="Musterstadt" value="<?php echo esc_attr($edit_data ? $edit_data->ort : ''); ?>"/>
-                </div>
-                <div class="hinschg-mandant-field">
-                    <label for="email"><?php _e('E-Mail für Benachrichtigung', 'hinschg-portal'); ?></label>
-                    <input type="email" id="email" name="email" required placeholder="kontakt@mandant.de" value="<?php echo esc_attr($edit_data ? $edit_data->email : ''); ?>"/>
                 </div>
                 <div class="hinschg-mandant-field">
                     <label for="website"><?php _e('Webseite (optional)', 'hinschg-portal'); ?></label>
@@ -583,7 +608,6 @@ function hinschg_portal_render_mandanten_page() {
                     <th scope="col" style="width: 30%"><?php _e('Link kopieren', 'hinschg-portal'); ?></th>
                     <th scope="col"><?php _e('Name', 'hinschg-portal'); ?></th>
                     <th scope="col"><?php _e('Ort', 'hinschg-portal'); ?></th>
-                    <th scope="col"><?php _e('E-Mail', 'hinschg-portal'); ?></th>
                     <th scope="col"><?php _e('Webseite', 'hinschg-portal'); ?></th>
                     <th scope="col" style="width: 15%"><?php _e('Aktionen', 'hinschg-portal'); ?></th>
                 </tr>
@@ -600,13 +624,12 @@ function hinschg_portal_render_mandanten_page() {
                     </td>
                     <td data-colname="Name">
                         <?php echo esc_html($m->name); ?>
-                        <a href="<?php echo esc_url( add_query_arg(['page'=>'hinschg-portal-mandanten','edit'=>$m->tenant_id], admin_url('admin.php')) ); ?>" style="font-size: 0.9em; display: block;"><?php _e('(Logo bearbeiten)', 'hinschg-portal'); ?></a>
+                        <a href="<?php echo esc_url( add_query_arg(['page'=>'hinschg-portal','edit'=>$m->tenant_id], admin_url('admin.php')) ); ?>" style="font-size: 0.9em; display: block;"><?php _e('(Logo bearbeiten)', 'hinschg-portal'); ?></a>
                     </td>
                     <td data-colname="Ort"><?php echo esc_html($m->ort); ?></td>
-                    <td data-colname="E-Mail"><?php echo esc_html($m->email); ?></td>
                     <td data-colname="Webseite"><?php echo !empty($m->website) ? '<a href="' . esc_url($m->website) . '" target="_blank">' . esc_html(parse_url($m->website, PHP_URL_HOST)) . '</a>' : '–'; ?></td>
                     <td data-colname="Aktionen">
-                        <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-portal-mandanten', 'edit_data'=>$m->tenant_id], admin_url('admin.php'))); ?>">Bearbeiten</a> 
+                        <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-portal', 'edit_data'=>$m->tenant_id], admin_url('admin.php'))); ?>">Bearbeiten</a> 
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('<?php _e('Diesen Mandanten löschen? Alle Hinweise bleiben erhalten.', 'hinschg-portal'); ?>');" style="display:inline;">
                             <input type="hidden" name="action" value="hinschg_delete_mandant" />
                             <input type="hidden" name="tenant_id" value="<?php echo esc_attr($m->tenant_id); ?>" />
@@ -638,10 +661,10 @@ function hinschg_portal_handle_save_mandant() {
     if ($wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'logo_id'") != 'logo_id') {
         $wpdb->query("ALTER TABLE {$table} ADD logo_id BIGINT UNSIGNED NULL AFTER website");
     }
-    $tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', $_POST['tenant_id']) : '';
+    $tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', wp_unslash($_POST['tenant_id'])) : '';
     $name = isset($_POST['name']) ? sanitize_text_field($_POST['name']) : '';
     $ort = isset($_POST['ort']) ? sanitize_text_field($_POST['ort']) : '';
-    $email = isset($_POST['email']) ? sanitize_email($_POST['email']) : '';
+    // No tenant contact email: notifications use assigned WordPress users only.
     // NEU: Webseite
     $website = isset($_POST['website']) ? esc_url_raw($_POST['website']) : '';
     
@@ -657,22 +680,32 @@ function hinschg_portal_handle_save_mandant() {
     if ($existing) {
         if ($name === '')   { $name   = $existing->name; }
         if ($ort === '')    { $ort    = $existing->ort; }
-        if ($email === '')  { $email  = $existing->email; }
         if ($website === ''){ $website= $existing->website; }
     }
-if (!preg_match('/^\d{8}$/', $tenant_id)) {
-        wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'error' => 'id'], admin_url('admin.php')));
-        exit;
+// A new tenant never accepts a caller-supplied ID; edits require an existing ID.
+    if ($tenant_id === '') {
+        $generated = false;
+        for ($attempt = 0; $attempt < 30; $attempt++) {
+            $candidate = (string) random_int(10000000, 99999999);
+            if (!hinschg_portal_get_mandant_by_tenant_id($candidate)) {
+                $tenant_id = $candidate;
+                $generated = true;
+                break;
+            }
+        }
+        if (!$generated) wp_die('Keine eindeutige Mandanten-ID verfügbar.');
+    } elseif (!hinschg_portal_get_mandant_by_tenant_id($tenant_id)) {
+        wp_die('Unbekannte Mandanten-ID. Neue Mandanten müssen ohne ID angelegt werden.', '', ['response' => 400]);
     }
-    if (!is_email($email)) {
-        wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'error' => 'email'], admin_url('admin.php')));
+    if (!preg_match('/^\d{8}$/', $tenant_id)) {
+        wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'error' => 'id'], admin_url('admin.php')));
         exit;
     }
 
     $data = [
         'name'      => $name,
         'ort'       => $ort,
-        'email'     => $email,
+        'email'     => '', // Legacy NOT NULL column; never used for delivery.
         'website'   => $website, // NEU: Webseite
     ];
 
@@ -686,7 +719,7 @@ if (!preg_match('/^\d{8}$/', $tenant_id)) {
         $wpdb->insert($table, $data);
     }
     if ($wpdb->last_error) { wp_die(esc_html('Mandant konnte nicht gespeichert werden: ' . $wpdb->last_error)); }
-    wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'updated' => '1', 'created' => ($existing ? '0' : '1'), 'logo' => (!empty($logo_id) || !empty($logo_saved) ? 'ok' : (isset($upload_err) ? $upload_err : 'na')), 'f' => isset($logo_field)? $logo_field : ''], admin_url('admin.php')));
+    wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'updated' => '1', 'created' => ($existing ? '0' : '1'), 'logo' => (!empty($logo_id) || !empty($logo_saved) ? 'ok' : (isset($upload_err) ? $upload_err : 'na')), 'f' => isset($logo_field)? $logo_field : ''], admin_url('admin.php')));
     exit;
 }
 
@@ -702,7 +735,7 @@ function hinschg_portal_handle_delete_mandant() {
     if (preg_match('/^\d{8}$/', $tenant_id)) {
         $wpdb->delete($table, ['tenant_id' => $tenant_id]);
     }
-    wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'deleted' => '1'], admin_url('admin.php')));
+    wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'deleted' => '1'], admin_url('admin.php')));
     exit;
 }
 
@@ -725,7 +758,7 @@ function hinschg_portal_handle_save_logo() {
     $logo_id = isset($_POST['logo_id']) ? intval($_POST['logo_id']) : 0;
 
     if (!preg_match('/^\d{8}$/', $tenant_id)) {
-        wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'error' => 'id'], admin_url('admin.php')));
+        wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'error' => 'id'], admin_url('admin.php')));
         exit;
     }
 
@@ -733,7 +766,7 @@ function hinschg_portal_handle_save_logo() {
     $wpdb->update($table, ['logo_id' => $logo_id], ['tenant_id' => $tenant_id]);
 
     // Leitet zur Bearbeitungsseite zurück mit einer Erfolgsmeldung
-    wp_redirect(add_query_arg(['page' => 'hinschg-portal-mandanten', 'edit' => $tenant_id, 'updated' => 'logo_ok'], admin_url('admin.php')));
+    wp_redirect(add_query_arg(['page' => 'hinschg-portal', 'edit' => $tenant_id, 'updated' => 'logo_ok'], admin_url('admin.php')));
     exit;
 }
 
@@ -1281,10 +1314,33 @@ function hinschg_portal_handle_front_submission($mandant, $opts) {
         '; Dateianhang ' . ($private_upload ? 'eingereicht' : 'nicht eingereicht'), 0);
 
     // Keine Meldungsinhalte, Tokens, Kontaktangaben oder Dateilinks per E-Mail.
-    wp_mail($mandant->email, '[' . get_bloginfo('name') . '] Neue Meldung',
+    hinschg_portal_notify_contacts($mandant->tenant_id, '[' . get_bloginfo('name') . '] Neue Meldung',
         "Im geschützten Hinweisgeberportal liegt eine neue Meldung vor. Bitte melden Sie sich über den vereinbarten sicheren Verwaltungszugang an.",
         ['Content-Type: text/plain; charset=UTF-8']);
     return ['ok' => true, 'msg' => 'gespeichert', 'token' => $token];
+}
+
+/** Resolve mail recipients exclusively from the assigned HinSchG contact role. */
+function hinschg_portal_contact_recipients($tenant_id) {
+    $tenant_id = (string) $tenant_id;
+    if (!preg_match('/^\d{8}$/', $tenant_id)) return [];
+    $recipients = [];
+    foreach (get_users(['role' => 'hinschg_ansprechpartner', 'fields' => 'all']) as $user) {
+        if (!in_array('hinschg_ansprechpartner', (array) $user->roles, true)) continue;
+        $ids = get_user_meta($user->ID, '_hinschg_allowed_tenants', true);
+        if (!is_array($ids) || !in_array($tenant_id, array_map('strval', $ids), true)) continue;
+        if (is_email($user->user_email)) $recipients[strtolower($user->user_email)] = $user->user_email;
+    }
+    return array_values($recipients);
+}
+
+/** Never fall back to the administrator, tenant record, or reporting person's address. */
+function hinschg_portal_notify_contacts($tenant_id, $subject, $message, $headers = []) {
+    $sent = false;
+    foreach (hinschg_portal_contact_recipients($tenant_id) as $address) {
+        if (wp_mail($address, $subject, $message, $headers)) $sent = true;
+    }
+    return $sent;
 }
 
 /* ===================== Fallmanagement: Kategorien, Risiko, Postfach, Audit ===================== */
@@ -1377,7 +1433,7 @@ function hinschg_portal_handle_reporter_message($mandant, $token) {
     $message = isset($_POST['mailbox_message']) ? wp_unslash($_POST['mailbox_message']) : '';
     if (strlen(trim($message)) < 2 || strlen($message) > 5000) { return 'Bitte geben Sie eine Nachricht mit 2 bis 5.000 Zeichen ein.'; }
     if (!hinschg_portal_append_message($result['post_id'], 'reporter', $message, 0)) { return 'Nachricht konnte nicht gespeichert werden.'; }
-    wp_mail($mandant->email, '[' . get_bloginfo('name') . '] Neue Postfachnachricht',
+    hinschg_portal_notify_contacts($mandant->tenant_id, '[' . get_bloginfo('name') . '] Neue Postfachnachricht',
         'Im geschützten Hinweisgeberportal liegt eine neue Nachricht vor.',
         ['Content-Type: text/plain; charset=UTF-8']);
     return 'OK:Nachricht wurde anonym an die Meldestelle übermittelt.';
@@ -1900,25 +1956,6 @@ function hinschg_register_contact_role() {
     }
 }
 add_action('init', 'hinschg_register_contact_role');
-function hinschg_admin_case_caps() {
-    $role = get_role('administrator');
-    if (!$role) return;
-    foreach (['edit_hinweise','edit_others_hinweise','edit_private_hinweise','edit_published_hinweise','read_private_hinweise','delete_hinweise','delete_others_hinweise','delete_private_hinweise','delete_published_hinweise','publish_hinweise'] as $cap) $role->add_cap($cap);
-}
-add_action('init', 'hinschg_admin_case_caps');
-/* Administratoren duerfen HinSchG-Vorgaenge auch nach Rollen-/Pluginupdates verwalten.
-   Nur die spezifischen Fall-Capabilities werden ergaenzt. */
-function hinschg_admin_primitive_caps($allcaps, $caps, $args, $user) {
-    if (!in_array('administrator', (array) $user->roles, true) || empty($allcaps['manage_options'])) return $allcaps;
-    foreach (['edit_hinweise','edit_others_hinweise','edit_private_hinweise',
-        'edit_published_hinweise','read_private_hinweise','delete_hinweise',
-        'delete_others_hinweise','delete_private_hinweise',
-        'delete_published_hinweise','publish_hinweise'] as $cap) {
-        $allcaps[$cap] = true;
-    }
-    return $allcaps;
-}
-add_filter('user_has_cap', 'hinschg_admin_primitive_caps', 20, 4);
 /* Mandantenbezogene Fallberechtigungen. Zuweisung nur durch WordPress-Administratoren. */
 function hinschg_allowed_tenants($user_id = 0) {
     $user_id = $user_id ?: get_current_user_id();
@@ -1929,7 +1966,7 @@ function hinschg_can_access_case($post_id, $user_id = 0) {
     $user_id = $user_id ?: get_current_user_id();
     if (!$user_id || get_post_type($post_id) !== 'hinweis') return false;
     // WordPress-Administratoren behalten den Zugriff auf alle Mandanten.
-    if (user_can($user_id, 'manage_options')) return true;
+    if (!hinschg_is_case_contact($user_id)) return false;
     $tid = (string) get_post_meta($post_id, '_hinschg_tenant_id', true);
     return $tid !== '' && in_array($tid, hinschg_allowed_tenants($user_id), true);
 }
@@ -1937,16 +1974,16 @@ function hinschg_case_caps($caps, $cap, $user_id, $args) {
     if (!in_array($cap, ['read_post','edit_post','delete_post'], true) || empty($args[0])) return $caps;
     $id = (int) $args[0];
     if (get_post_type($id) === 'hinweis') {
-        if (user_can($user_id, 'manage_options')) return ['exist'];
+        if (!hinschg_is_case_contact($user_id)) return ['do_not_allow'];
         if (!hinschg_can_access_case($id, $user_id)) return ['do_not_allow'];
-        if (in_array('hinschg_ansprechpartner', (array) get_userdata($user_id)->roles, true) && $cap === 'delete_post') return ['do_not_allow'];
+        if ($cap === 'delete_post') return ['do_not_allow'];
     }
     return $caps;
 }
 add_filter('map_meta_cap', 'hinschg_case_caps', 20, 4);
 function hinschg_scope_case_query($query) {
     if (!is_admin() || !$query->is_main_query() || $query->get('post_type') !== 'hinweis') return;
-    if (current_user_can('manage_options')) return;
+    if (!hinschg_is_case_contact()) { $query->set('post__in', [0]); return; }
     $ids = hinschg_allowed_tenants();
     $meta = (array) $query->get('meta_query');
     $meta[] = ['key'=>'_hinschg_tenant_id','value'=>$ids ?: ['__none__'],'compare'=>'IN'];
@@ -1958,7 +1995,7 @@ function hinschg_user_tenants_fields($user) {
     if (!current_user_can('manage_options')) return;
     $selected = hinschg_allowed_tenants($user->ID);
     echo '<h2>HinSchG – Mandantenzuordnung</h2>';
-    echo '<p>Nur für die Rolle HinSchG-Ansprechpartner erforderlich. WordPress-Administratoren haben immer Zugriff auf alle Mandanten.</p>';
+    echo '<p>Nur für die Rolle HinSchG-Ansprechpartner erforderlich. WordPress-Administratoren erhalten keinen Zugriff auf Fallinhalte.</p>';
     wp_nonce_field('hinschg_user_tenants_save', 'hinschg_user_tenants_nonce');
     echo '<table class="form-table"><tr><th>Mandanten auswählen</th><td>';
     $tenants = hinschg_portal_get_mandanten();
@@ -1989,7 +2026,7 @@ function hinschg_new_user_tenants_fields() {
     foreach (hinschg_portal_get_mandanten() as $tenant) {
         echo '<label style="display:block;margin-bottom:8px"><input type="checkbox" name="hinschg_new_user_tenants[]" value="'.esc_attr($tenant->tenant_id).'"> '.esc_html($tenant->name).' ('.esc_html($tenant->tenant_id).')</label>';
     }
-    echo '<p class="description">Optional: mehrere auswählen. WordPress-Administratoren brauchen keine Zuordnung.</p></td></tr></table>';
+    echo '<p class="description">Optional: mehrere auswählen. Benachrichtigungen werden nur an zugeordnete HinSchG-Ansprechpartner gesendet.</p></td></tr></table>';
 }
 add_action('user_new_form','hinschg_new_user_tenants_fields');
 add_action('admin_footer-user-new.php', 'hinschg_preselect_contact_role');
@@ -2020,13 +2057,14 @@ function hinschg_save_new_user_tenants($user_id) {
 }
 add_action('user_register','hinschg_save_new_user_tenants',20);
 add_action('admin_menu', function() {
-    if (current_user_can('manage_options') || !current_user_can('edit_hinweise')) return;
+    if (!hinschg_is_case_contact() || !current_user_can('edit_hinweise')) return;
     $u = wp_get_current_user();
     if (in_array('hinschg_ansprechpartner', (array) $u->roles, true)) {
         // Dashboard und Vorgangsliste fuer zugewiesene Mandanten.
         add_menu_page('HinSchG Hinweise', 'HinSchG Hinweise', 'edit_hinweise', 'hinschg-cases', 'hinschg_portal_render_cockpit_page', 'dashicons-shield', 26);
         add_submenu_page('hinschg-cases', 'Cockpit', 'Cockpit', 'edit_hinweise', 'hinschg-cases', 'hinschg_portal_render_cockpit_page');
         add_submenu_page('hinschg-cases', 'Hinweise', 'Hinweise', 'edit_hinweise', 'edit.php?post_type=hinweis');
+        add_submenu_page('hinschg-cases', 'Fristen und Aufbewahrung', 'Fristen und Aufbewahrung', 'edit_hinweise', 'hinschg-fristen', 'hinschg_portal_deadlines_admin_page');
     }
 }, 40);
 
@@ -2064,7 +2102,7 @@ function hinschg_contact_dashboard_page() {
 }
 /* Schlankes Backend fuer Ansprechpartner, ohne Admins einzuschraenken. */
 function hinschg_is_contact_only() {
-    if (!is_user_logged_in() || current_user_can('manage_options')) return false;
+    if (!is_user_logged_in()) return false;
     return in_array('hinschg_ansprechpartner', (array) wp_get_current_user()->roles, true);
 }
 function hinschg_contact_backend_menu() {
@@ -2088,7 +2126,7 @@ function hinschg_contact_backend_guard() {
         $id = absint($_GET['post'] ?? $_POST['post_ID'] ?? 0);
         $allowed = $id && hinschg_can_access_case($id);
     }
-    if ($pagenow === 'admin.php' && $page === 'hinschg-cases') $allowed = true;
+    if ($pagenow === 'admin.php' && in_array($page, ['hinschg-cases', 'hinschg-fristen'], true)) $allowed = true;
     if ($pagenow === 'profile.php') $allowed = true;
     if ($allowed) return;
     if ($pagenow === 'index.php' || $pagenow === 'admin.php' && $page === '') {
@@ -2100,8 +2138,7 @@ add_action('admin_init', 'hinschg_contact_backend_guard', 100);
 /* WooCommerce may override the login destination and block non-shop roles from wp-admin.
    Only the dedicated HinSchG role is exempted; other customers are unchanged. */
 function hinschg_contact_user($user) {
-    return $user instanceof WP_User && !user_can($user, 'manage_options')
-        && in_array('hinschg_ansprechpartner', (array) $user->roles, true);
+    return $user instanceof WP_User && in_array('hinschg_ansprechpartner', (array) $user->roles, true);
 }
 add_filter('login_redirect', function($redirect, $requested, $user) {
     return hinschg_contact_user($user) ? admin_url('admin.php?page=hinschg-cases') : $redirect;
@@ -2246,7 +2283,7 @@ function hinschg_portal_deadline_timestamp($post_id, $kind) {
     return 0;
 }
 function hinschg_portal_deadlines_admin_page() {
-    if (!current_user_can('manage_options')) wp_die('Keine Berechtigung');
+    hinschg_require_case_contact();
     if (isset($_POST['hinschg_ack_id'])) {
         check_admin_referer('hinschg_ack');
         $id = absint($_POST['hinschg_ack_id']);
@@ -2314,9 +2351,7 @@ function hinschg_portal_deadlines_admin_page() {
     if (!$deletions) echo '<tr><td colspan="4">Noch keine abgeschlossenen Löschungen.</td></tr>';
     echo '</tbody></table></div>';
 }
-add_action('admin_menu', function() {
-    add_submenu_page('hinschg-portal', 'Fristen und Aufbewahrung', 'Fristen und Aufbewahrung', 'manage_options', 'hinschg-fristen', 'hinschg_portal_deadlines_admin_page');
-});
+// Fristenmenue wird gemeinsam mit dem Ansprechpartner-Hauptmenue registriert.
 
 
 /* ===== 1.7.0: privacy-preserving deadline monitoring and retention review ===== */
@@ -2347,17 +2382,39 @@ function hinschg_portal_daily_review($send_mail = true) {
     update_option('hinschg_portal_review_counts', $counts, false);
     update_option('hinschg_portal_review_checked_at', $now, false);
     if (!$send_mail || array_sum($counts) === 0) return;
-    $last_sent = (int) get_option('hinschg_portal_review_last_mail', 0);
-    if ($last_sent && $last_sent > $now - DAY_IN_SECONDS) return;
-    $recipient = get_option('admin_email');
-    if (!$recipient || !is_email($recipient)) return;
+    // Evaluate deadlines per tenant. A reminder for one tenant must not block another.
+    $tenant_ids = [];
+    $page = 1;
+    do {
+        $case_ids = get_posts(['post_type' => 'hinweis', 'post_status' => 'private', 'fields' => 'ids', 'posts_per_page' => 100, 'paged' => $page, 'orderby' => 'ID', 'order' => 'ASC', 'suppress_filters' => false]);
+        foreach ($case_ids as $case_id) {
+            foreach (array_keys($counts) as $kind) {
+                if ($kind === 'receipt' && get_post_meta($case_id, '_hinschg_acknowledged_at', true)) continue;
+                $due = hinschg_portal_deadline_timestamp($case_id, $kind);
+                if ($due && $due <= $now) {
+                    $tid = (string) get_post_meta($case_id, '_hinschg_tenant_id', true);
+                    if (preg_match('/^\d{8}$/', $tid)) $tenant_ids[$tid] = true;
+                    break;
+                }
+            }
+        }
+        $page++;
+    } while (count($case_ids) === 100);
+    $last_by_tenant = get_option('hinschg_portal_review_last_mail_by_tenant', []);
+    if (!is_array($last_by_tenant)) $last_by_tenant = [];
     $subject = 'HinSchG-Portal: Fristenpruefung erforderlich';
-    $body = 'Im HinSchG-Portal sind Fristen oder Aufbewahrungsprüfungen offen. Bitte melden Sie sich im geschuetzten WordPress-Administrationsbereich an und pruefen Sie die Uebersicht Fristen und Aufbewahrung. Diese Nachricht enthaelt keine Falldaten.';
-    if (wp_mail($recipient, $subject, $body)) update_option('hinschg_portal_review_last_mail', $now, false);
+    $body = 'Fuer einen Ihnen zugewiesenen Mandanten sind Fristen oder Aufbewahrungspruefungen offen. Bitte pruefen Sie die geschuetzte Fristenverwaltung. Diese Nachricht enthaelt keine Falldaten.';
+    foreach (array_keys($tenant_ids) as $tid) {
+        if (!empty($last_by_tenant[$tid]) && (int) $last_by_tenant[$tid] > $now - DAY_IN_SECONDS) continue;
+        if (hinschg_portal_notify_contacts($tid, $subject, $body)) {
+            $last_by_tenant[$tid] = $now;
+        }
+    }
+    update_option('hinschg_portal_review_last_mail_by_tenant', $last_by_tenant, false);
 }
 add_action('hinschg_portal_daily_review', 'hinschg_portal_daily_review');
 add_action('admin_notices', function() {
-    if (!current_user_can('manage_options')) return;
+    if (!hinschg_is_case_contact()) return;
     // Only show this notice inside the HinSchG portal, never on unrelated WP screens.
     $screen = get_current_screen();
     $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
@@ -2386,11 +2443,11 @@ add_action('before_delete_post', function($post_id) {
 /* ===== 1.8.0: Controlled two-person retention deletion ===== */
 function hinschg_portal_retention_handle_action() {
     if (empty($_POST['hinschg_retention_action'])) return;
-    if (!current_user_can('manage_options')) wp_die('Keine Berechtigung');
+    hinschg_require_case_contact();
     check_admin_referer('hinschg_retention_action');
     $id = absint($_POST['hinschg_retention_id'] ?? 0);
     $action = sanitize_key(wp_unslash($_POST['hinschg_retention_action']));
-    if (get_post_type($id) !== 'hinweis' || !current_user_can('delete_post', $id)) wp_die('Keine Fallberechtigung');
+    if (get_post_type($id) !== 'hinweis' || !hinschg_can_access_case($id)) wp_die('Keine Fallberechtigung');
     $user = get_current_user_id();
     $hold = (bool) get_post_meta($id, '_hinschg_retention_hold', true);
     $due = hinschg_portal_deadline_timestamp($id, 'retention');
@@ -2417,7 +2474,9 @@ function hinschg_portal_retention_handle_action() {
         if ($attachments || $linked_attachment_id) {
             wp_die('Loeschung blockiert: Dieser Vorgang enthaelt Dateianhaenge. Bitte zuerst den geschuetzten Datei-Loeschprozess klaeren.');
         }
+        $GLOBALS['hinschg_retention_authorized_delete'] = $id;
         $deleted = wp_delete_post($id, true);
+        unset($GLOBALS['hinschg_retention_authorized_delete']);
         if (!$deleted || get_post($id)) {
             wp_die('Loeschung fehlgeschlagen. Es wurde kein erfolgreicher Loeschvorgang protokolliert.');
         }
@@ -2431,7 +2490,7 @@ function hinschg_portal_retention_handle_action() {
     }
 }
 function hinschg_portal_retention_controls($id) {
-    if (!current_user_can('manage_options') || !current_user_can('delete_post', $id)) return;
+    if (!hinschg_is_case_contact() || !hinschg_can_access_case($id)) return;
     $due = hinschg_portal_deadline_timestamp($id, 'retention');
     $hold = (bool) get_post_meta($id, '_hinschg_retention_hold', true);
     $request = get_post_meta($id, '_hinschg_retention_request', true);
@@ -2451,3 +2510,22 @@ function hinschg_portal_retention_controls($id) {
         echo '<button type="submit" class="button"'.($action === 'approve' ? ' onclick="return confirm(\'Fallakte unwiderruflich löschen? Backups separat prüfen.\')"' : '').'>'.esc_html($label).'</button></form>';
     }
 }
+
+/* Defense in depth: no direct case-list or case-editor access for WP administrators. */
+add_action('admin_init', function() {
+    global $pagenow;
+    $type = isset($_GET['post_type']) ? sanitize_key(wp_unslash($_GET['post_type'])) : '';
+    $id = absint($_GET['post'] ?? $_POST['post_ID'] ?? 0);
+    $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : '';
+    if (($pagenow === 'edit.php' && $type === 'hinweis') ||
+        ($pagenow === 'post.php' && $id && get_post_type($id) === 'hinweis') ||
+        ($pagenow === 'admin.php' && in_array($page, ['hinschg-cases','hinschg-fristen'], true))) {
+        hinschg_require_case_contact();
+    }
+}, 1);
+
+add_filter('pre_delete_post', function($check, $post) {
+    if ($post instanceof WP_Post && $post->post_type === 'hinweis' &&
+        (int) ($GLOBALS['hinschg_retention_authorized_delete'] ?? 0) !== (int) $post->ID) return false;
+    return $check;
+}, 10, 2);
