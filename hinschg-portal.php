@@ -70,7 +70,6 @@ function hinschg_portal_activate() {
     // Default options
     if (!get_option(HINSCHG_PORTAL_OPTION_KEY)) {
         add_option(HINSCHG_PORTAL_OPTION_KEY, [
-            'notify_cc' => '', // optional CC
             'store_ip'  => false, // IP nicht speichern (wir speichern sowieso keine IP)
             'allow_attachments' => true,
             'max_attachment_mb' => 10,
@@ -143,7 +142,6 @@ function hinschg_portal_register_admin_menu() {
     );
     
     add_submenu_page('hinschg-portal', __('Mandanten', 'hinschg-portal'), __('Mandanten', 'hinschg-portal'), 'manage_options', 'hinschg-portal', 'hinschg_portal_render_mandanten_page');
-    add_submenu_page('hinschg-portal', __('Einstellungen', 'hinschg-portal'), __('Einstellungen', 'hinschg-portal'), 'manage_options', 'hinschg-portal-einstellungen', 'hinschg_portal_render_settings_page');
 
     // Eine einzige Mandanten-Seite: Hauptmenue und Untermenue verwenden denselben Slug.
     hinschg_portal_register_legal_page();
@@ -795,35 +793,6 @@ function hinschg_portal_prefix_tenant_filename($filename) {
     return $filename;
 }
 
-/* ===================== Einstellungen ===================== */
-
-function hinschg_portal_render_settings_page() {
-    if (!current_user_can('manage_options')) { return; }
-    $opts = get_option(HINSCHG_PORTAL_OPTION_KEY, []);
-    if (isset($_POST['_wpnonce']) && wp_verify_nonce($_POST['_wpnonce'], HINSCHG_PORTAL_NONCE_ACTION)) {
-        $opts['notify_cc'] = isset($_POST['notify_cc']) ? sanitize_text_field($_POST['notify_cc']) : '';
-        update_option(HINSCHG_PORTAL_OPTION_KEY, $opts);
-        echo '<div class="updated notice"><p>Einstellungen gespeichert.</p></div>';
-    }
-    ?>
-    <div class="wrap">
-        <h1><?php _e('Einstellungen', 'hinschg-portal'); ?></h1>
-        <form method="post">
-            <input type="hidden" name="_wpnonce" value="<?php echo esc_attr(wp_create_nonce(HINSCHG_PORTAL_NONCE_ACTION)); ?>"/>
-            <table class="form-table">
-                <tr><th>Benachrichtigungs-CC</th><td><input name="notify_cc" value="<?php echo esc_attr($opts['notify_cc'] ?? ''); ?>" placeholder="cc@example.org"/></td></tr>
-            </table>
-            <p><button class="button button-primary">Speichern</button></p>
-        </form>
-        <hr/>
-        <p>Bei der Aktivierung des Plugins wird automatisch die Seite <strong>„Hinweisgeberschutz Portal“</strong> mit dem Slug <code>hinweis</code> und dem Shortcode <code>[hinweisportal]</code> erstellt, sofern sie noch nicht vorhanden ist. Mandanten werden über den URL-Parameter <code>?mandant=12345678</code> aufgerufen.</p>
-        <div><strong>URL zu dieser Seite: <input id="copy-hinurl" name="copy-hinurl" type="text" class="copy-to-clipboard" style="min-width:50%" value="<?php echo esc_url(add_query_arg('mandant', '12345678', home_url('/hinweis/'))); ?>">
-			<p class="newlabel" style="background-color:#fe8;display:none">Pfad in Zwischenablage kopiert</p></div>
-			<p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
-    </div>
-    <?php
-}
-
 /* ===================== Frontend: Shortcode ===================== */
 
 function hinschg_portal_enqueue_styles() {
@@ -1091,35 +1060,29 @@ function hinschg_portal_find_report($mandant, $token, $verify_nonce = true) {
         ];
     }
 
-    $reports = get_posts([
-        'post_type' => 'hinweis',
-        'post_status' => 'private',
-        'posts_per_page' => 1,
-        'no_found_rows' => true,
-        'fields' => 'ids',
-        'meta_query' => [
-            'relation' => 'AND',
-            [
-                'key' => '_hinschg_tenant_id',
-                'value' => $mandant->tenant_id,
-                'compare' => '=',
-            ],
-            [
-                'key' => '_hinschg_token',
-                'value' => $token,
-                'compare' => '=',
-            ],
-        ],
-    ]);
+    // Anonymous follow-up is authorized by the secret token AND tenant ID,
+    // not by WordPress capabilities for private posts. Query only the ID.
+    global $wpdb;
+    $report_id = (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT p.ID FROM {$wpdb->posts} p
+         INNER JOIN {$wpdb->postmeta} tenant ON tenant.post_id = p.ID
+             AND tenant.meta_key = '_hinschg_tenant_id' AND tenant.meta_value = %s
+         INNER JOIN {$wpdb->postmeta} secret ON secret.post_id = p.ID
+             AND secret.meta_key = '_hinschg_token' AND secret.meta_value = %s
+         WHERE p.post_type = 'hinweis' AND p.post_status IN ('private', 'publish', 'pending', 'draft', 'future')
+         LIMIT 1",
+        (string) $mandant->tenant_id,
+        $token
+    ));
 
-    if (empty($reports)) {
+    if (!$report_id) {
         return [
             'ok' => false,
             'msg' => 'Zu dieser Vorgangs-ID wurde für diesen Mandanten kein Hinweis gefunden.',
         ];
     }
 
-    $post = get_post((int) $reports[0]);
+    $post = get_post($report_id);
     if (!$post || $post->post_type !== 'hinweis') {
         return [
             'ok' => false,
@@ -1855,8 +1818,8 @@ function hinschg_portal_handle_download() {
 function hinschg_portal_register_legal_page() {
     add_submenu_page(
         'hinschg-portal',                // Parent-Slug
-        'Rechtliches & Haftung',        // Seitentitel
-        'Rechtliches',                  // Menütext
+        'Recht / Anleitung',           // Seitentitel
+        'Recht / Anleitung',           // Menütext
         'manage_options',               // Berechtigung
         'hinschg_portal_legal',         // Slug
         'hinschg_portal_render_legal_page'    // Callback
@@ -1871,7 +1834,7 @@ function hinschg_portal_public_information() {
 }
 
 function hinschg_portal_hs_show_disclaimer() {
-		return '<details class="noprint"><summary>📜 Rechtliche Hinweise & Nutzungsbedingungen</summary>
+		return '<section class="hinschg-legal-notices"><h2>Rechtliche Hinweise &amp; Nutzungsbedingungen</h2>
 		<div>
 		<p><b>Test-, Demo- und Eigeninstallationen:</b><br>
 		Die bereitgestellten Anwendungen, Tools, Spiele, Vorlagen und Module dienen ausschließlich Informations-, Demonstrations-, Lern-, Test- und Präsentationszwecken. Bitte geben Sie keine vertraulichen, personenbezogenen oder produktiven Unternehmensdaten ein. Eingegebene Inhalte können zu Demonstrations-, Entwicklungs-, Test- oder Fehleranalysezwecken verarbeitet und gespeichert werden. Es besteht kein Anspruch auf Vertraulichkeit, dauerhafte Speicherung oder Verfügbarkeit der eingegebenen Daten.</p>
@@ -1897,13 +1860,19 @@ function hinschg_portal_hs_show_disclaimer() {
 		<p><b>Haftung:</b><br>
 		Die Bereitstellung erfolgt ausdrücklich &bdquo;AS IS&ldquo; (&bdquo;wie besehen&ldquo;).  Der Anbieter übernimmt keine Gewähr für Fehlerfreiheit, unterbrechungsfreien Betrieb oder die Einhaltung gesetzlicher und regulatorischer Anforderungen. Die Haftung ist auf Vorsatz und grobe Fahrlässigkeit beschränkt. Bei leicht fahrlässiger Verletzung wesentlicher Vertragspflichten (Kardinalpflichten) ist die Haftung auf den vertragstypischen, vorhersehbaren Schaden begrenzt. Die Haftung wegen Verletzung von Leben, Körper oder Gesundheit sowie nach zwingenden gesetzlichen Vorschriften bleibt unberührt.</p>
 		<p><a target="_blank" href="'.esc_url( home_url( '/impressum/' ) ).'">Ausführliche rechtliche Hinweise, Lizenz- und Nutzungsbedingungen</a></p>
-		</div></details>';
+		</div></section>';
 	}
 
 function hinschg_portal_render_legal_page() {
 	?>
     <div class="wrap">
-        <h1>Rechtliches &amp; Haftung</h1>
+        <h1>Recht / Anleitung</h1>
+        <h2>Einrichtung und Portal-Link</h2>
+        <p>Bei der Aktivierung des Plugins wird automatisch die Seite <strong>„Hinweisgeberschutz Portal“</strong> mit dem Slug <code>hinweis</code> und dem Shortcode <code>[hinweisportal]</code> erstellt, sofern sie noch nicht vorhanden ist. Mandanten werden über den URL-Parameter <code>?mandant=12345678</code> aufgerufen.</p>
+        <p><label for="hinschg-example-url"><strong>Beispiel-URL zum Kopieren:</strong></label></p>
+        <p><input id="hinschg-example-url" type="text" readonly style="width:100%;max-width:650px" value="<?php echo esc_attr(add_query_arg('mandant', '12345678', home_url('/hinweis/'))); ?>" onclick="this.select()" aria-label="Beispiel-Portal-Link" /></p>
+        <p><em>12345678 ist eine Beispiel-ID. Den tatsächlichen Portal-Link finden Sie bei Ihrem Mandanten.</em></p>
+        <p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
         <h2>Hintergrund des Hinweisgeberschutzgesetzes (HinSchG)</h2>
         <p>
             Das Hinweisgeberschutzgesetz (HinSchG) dient der Umsetzung der EU-Richtlinie (EU) 2019/1937 über den Schutz von Personen,
