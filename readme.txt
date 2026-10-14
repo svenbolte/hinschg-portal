@@ -1,3 +1,5 @@
+Version 1.9.21: Überflüssigen Kontakt-Klappbereich inklusive Hinweistext vollständig aus dem öffentlichen Meldeformular entfernt. Anonymes Postfach bleibt unverändert.
+
 Version 1.9.20: Adminbereich „Recht / Anleitung“ um Shortcode mit optionaler Mandanten-ID, Bildoption, Prioritätsregel sowie Hinweise zur anonymen Kommunikation und zu Bestandsdaten ergänzt.
 
 Version 1.9.17: Mandantenformular auf Desktop zweispaltig und mobil einspaltig. Hinweisbox nur beim Neuanlegen.
@@ -17,7 +19,7 @@ Contributors: Sven Bolte
 Author: ChatGPT and PBMod
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
 License: Commercial License (includes third-party Open Source components; see license.txt)
-Version: 1.9.20
+Version: 1.9.21
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2

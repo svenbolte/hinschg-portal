@@ -8,8 +8,8 @@ Author URI: https://github.com/svenbolte/
 Plugin URI: https://github.com/svenbolte/hinschg-portal/
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
-Version: 1.9.20
-Stable tag: 1.9.20
+Version: 1.9.27
+Stable tag: 1.9.27
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
@@ -121,6 +121,38 @@ function hinschg_portal_register_cpt_hinweis() {
         ],
     ]);
 }
+
+/* WordPress-Status ist rein technisch; der fachliche Status steht in _hinschg_status. */
+function hinschg_portal_force_private_post_data($data, $postarr) {
+    if (($data['post_type'] ?? '') === 'hinweis' && ($data['post_status'] ?? '') !== 'trash') {
+        $data['post_status'] = 'private';
+    }
+    return $data;
+}
+add_filter('wp_insert_post_data', 'hinschg_portal_force_private_post_data', 20, 2);
+
+/* WordPress-Status-Hinweise (z.B. "Ausstehend") im Backend durch den Fachstatus ersetzen. */
+function hinschg_portal_display_case_state($states, $post) {
+    if ($post->post_type !== 'hinweis') { return $states; }
+    return [hinschg_portal_get_status_label($post->ID)];
+}
+add_filter('display_post_states', 'hinschg_portal_display_case_state', 20, 2);
+
+/* Einmalige Korrektur alter Datensaetze, die noch pending/draft/publish etc. sind.
+ * Papierkorb bleibt unangetastet. Keine fachlichen Statuswerte werden veraendert. */
+function hinschg_portal_repair_legacy_post_statuses() {
+    if (get_option('hinschg_portal_private_status_repaired_1925')) { return; }
+    if (!current_user_can('manage_options')) { return; }
+    global $wpdb;
+    $ids = $wpdb->get_col("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'hinweis' AND post_status NOT IN ('private', 'trash', 'auto-draft', 'inherit')");
+    foreach ($ids as $id) {
+        $id = (int) $id;
+        $wpdb->update($wpdb->posts, ['post_status' => 'private'], ['ID' => $id], ['%s'], ['%d']);
+        clean_post_cache($id);
+    }
+    update_option('hinschg_portal_private_status_repaired_1925', 1, false);
+}
+add_action('admin_init', 'hinschg_portal_repair_legacy_post_statuses', 5);
 
 /* ===================== Admin: Mandanten ===================== */
 
@@ -842,7 +874,12 @@ function hinschg_portal_shortcode_hinweisportal($atts, $content = '') {
     $atts = shortcode_atts(['image' => 1, 'id' => ''], $atts, 'hinweisportal');
     $show_image = intval($atts['image']) === 1;
     // A fixed shortcode ID takes precedence over the URL parameter.
-    $tenant_id = trim((string) $atts['id']);
+    $tenant_id = is_scalar($atts['id']) ? trim((string) $atts['id']) : '';
+    // The shortcode is authoritative; never use URL or POST to override a fixed ID.
+    // Follow-up forms must keep their original tenant even when the page URL loses its query string.
+    if ($tenant_id === '' && $_SERVER['REQUEST_METHOD'] === 'POST' && (isset($_POST['hinschg_lookup']) || isset($_POST['hinschg_message_submit']) || isset($_POST['hinschg_submit']))) {
+        $tenant_id = isset($_POST['tenant_id']) && is_scalar($_POST['tenant_id']) ? (string) wp_unslash($_POST['tenant_id']) : '';
+    }
     if ($tenant_id === '') {
         $tenant_id = isset($_GET['mandant']) && is_scalar($_GET['mandant']) ? (string) wp_unslash($_GET['mandant']) : '';
     }
@@ -863,6 +900,7 @@ echo hinschg_portal_public_information();
     if (!$mandant) {
 			echo '<div class="intro-text">'.$hinschginfo.'</div>';
         echo '<div class="notice-error"><p>Bitte verwenden Sie eine gültige Mandanten-ID im Shortcode (z. B. <code>[hinweisportal id="12345678"]</code>) oder im Link (<code>?mandant=12345678</code>).</p></div>';
+        hinschg_portal_render_lookup(null);
         echo '</div>';
         return ob_get_clean();
     }
@@ -959,7 +997,7 @@ function hinschg_portal_render_lookup($mandant) {
         <div>
             <form method="post" class="hinschg-form" autocomplete="off">
                 <?php wp_nonce_field(HINSCHG_PORTAL_NONCE_ACTION . '_lookup', '_hinschg_lookup_nonce'); ?>
-                <input type="hidden" name="tenant_id" value="<?php echo esc_attr($mandant->tenant_id); ?>"/>
+                <input type="hidden" name="tenant_id" value="<?php echo esc_attr($mandant ? $mandant->tenant_id : ''); ?>"/>
                 <p>
                     <label>
                         Vorgangs-ID<br/>
@@ -1017,7 +1055,7 @@ function hinschg_portal_render_lookup($mandant) {
                         <?php endif; ?>
                         <form method="post" class="hinschg-form" autocomplete="off">
                             <?php wp_nonce_field(HINSCHG_PORTAL_NONCE_ACTION . '_message', '_hinschg_message_nonce'); ?>
-                            <input type="hidden" name="tenant_id" value="<?php echo esc_attr($mandant->tenant_id); ?>"/>
+                            <input type="hidden" name="tenant_id" value="<?php echo esc_attr($mandant ? $mandant->tenant_id : ''); ?>"/>
                             <input type="hidden" name="lookup_token" value="<?php echo esc_attr($lookup_result['token']); ?>"/>
                             <p><label>Nachricht an die Meldestelle<br/><textarea name="mailbox_message" rows="5" maxlength="5000" required placeholder="Antwort oder Ergänzung eingeben …"></textarea></label></p>
                             <p><button type="submit" name="hinschg_message_submit">Nachricht anonym senden</button></p>
@@ -1046,17 +1084,6 @@ function hinschg_portal_find_report($mandant, $token, $verify_nonce = true) {
         ];
     }
 
-    $posted_tenant_id = isset($_POST['tenant_id'])
-        ? preg_replace('/[^0-9]/', '', wp_unslash($_POST['tenant_id']))
-        : '';
-
-    if ($posted_tenant_id !== $mandant->tenant_id) {
-        return [
-            'ok' => false,
-            'msg' => 'Mandant ungültig.',
-        ];
-    }
-
     if (!preg_match('/^[A-Za-z0-9]{12,64}$/', $token)) {
         return [
             'ok' => false,
@@ -1064,25 +1091,27 @@ function hinschg_portal_find_report($mandant, $token, $verify_nonce = true) {
         ];
     }
 
-    // Anonymous follow-up is authorized by the secret token AND tenant ID,
-    // not by WordPress capabilities for private posts. Query only the ID.
+    // The secret, globally unique case token authorizes lookup independently of
+    // the page's shortcode/URL tenant. Tenant identity is read from the case.
     global $wpdb;
-    $report_id = (int) $wpdb->get_var($wpdb->prepare(
-        "SELECT p.ID FROM {$wpdb->posts} p
-         INNER JOIN {$wpdb->postmeta} tenant ON tenant.post_id = p.ID
-             AND tenant.meta_key = '_hinschg_tenant_id' AND tenant.meta_value = %s
+    $report_ids = $wpdb->get_col($wpdb->prepare(
+        "SELECT DISTINCT p.ID FROM {$wpdb->posts} p
          INNER JOIN {$wpdb->postmeta} secret ON secret.post_id = p.ID
              AND secret.meta_key = '_hinschg_token' AND secret.meta_value = %s
          WHERE p.post_type = 'hinweis' AND p.post_status IN ('private', 'publish', 'pending', 'draft', 'future')
-         LIMIT 1",
-        (string) $mandant->tenant_id,
+         LIMIT 2",
         $token
     ));
+    // Fail closed if legacy data contains a duplicate token.
+    if (count($report_ids) > 1) {
+        return ['ok' => false, 'msg' => 'Vorgangs-ID nicht eindeutig. Bitte kontaktieren Sie die Meldestelle.'];
+    }
+    $report_id = !empty($report_ids) ? (int) $report_ids[0] : 0;
 
     if (!$report_id) {
         return [
             'ok' => false,
-            'msg' => 'Zu dieser Vorgangs-ID wurde für diesen Mandanten kein Hinweis gefunden.',
+            'msg' => 'Zu dieser Vorgangs-ID wurde kein Hinweis gefunden.',
         ];
     }
 
@@ -1108,6 +1137,7 @@ function hinschg_portal_find_report($mandant, $token, $verify_nonce = true) {
         'messages' => hinschg_portal_get_messages($post->ID),
         'content' => $post->post_content,
         'post_id' => $post->ID,
+        'tenant_id' => (string) get_post_meta($post->ID, '_hinschg_tenant_id', true),
     ];
 }
 
@@ -1137,9 +1167,6 @@ function hinschg_portal_render_front_form($mandant, $opts) {
                 <textarea name="message" rows="8" required placeholder="Bitte beschreiben Sie den Hinweis möglichst konkret."><?php echo esc_textarea($old_message); ?></textarea></label></p>
             <p><label>Datei anhängen (optional, max. <?php echo esc_html($max_mb); ?> MB)<br/>
                 <input type="file" name="attachment" accept=".pdf,.png,.jpg,.jpeg,.txt" /></label></p>
-            <details><summary>Kontakt aufnehmen? (optional)</summary>
-                <p>Für Rückfragen und Rückmeldungen nutzen Sie bitte Ihr geschütztes anonymes Postfach.</p>
-            </details>
             <p><label><input type="checkbox" name="confirm" required/> Ich bestätige, dass meine Angaben nach bestem Wissen und Gewissen korrekt sind.</label></p>
             
             <p class="antispam"><label><strong>Sicherheitsfrage:</strong> <?php
@@ -1384,8 +1411,7 @@ function hinschg_portal_handle_reporter_message($mandant, $token) {
     if (!isset($_POST['_hinschg_message_nonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_hinschg_message_nonce'])), HINSCHG_PORTAL_NONCE_ACTION . '_message')) {
         return 'Sicherheits-Token ungültig. Bitte laden Sie die Seite neu.';
     }
-    $posted_tenant_id = isset($_POST['tenant_id']) ? preg_replace('/[^0-9]/', '', wp_unslash($_POST['tenant_id'])) : '';
-    if ($posted_tenant_id !== $mandant->tenant_id || !preg_match('/^[A-Za-z0-9]{12,64}$/', $token)) {
+    if (!preg_match('/^[A-Za-z0-9]{12,64}$/', $token)) {
         return 'Vorgang konnte nicht verifiziert werden.';
     }
     $result = hinschg_portal_find_report($mandant, $token, false);
@@ -1393,7 +1419,7 @@ function hinschg_portal_handle_reporter_message($mandant, $token) {
     $message = isset($_POST['mailbox_message']) ? wp_unslash($_POST['mailbox_message']) : '';
     if (strlen(trim($message)) < 2 || strlen($message) > 5000) { return 'Bitte geben Sie eine Nachricht mit 2 bis 5.000 Zeichen ein.'; }
     if (!hinschg_portal_append_message($result['post_id'], 'reporter', $message, 0)) { return 'Nachricht konnte nicht gespeichert werden.'; }
-    hinschg_portal_notify_contacts($mandant->tenant_id, '[' . get_bloginfo('name') . '] Neue Postfachnachricht',
+    hinschg_portal_notify_contacts($result['tenant_id'], '[' . get_bloginfo('name') . '] Neue Postfachnachricht',
         'Im geschützten Hinweisgeberportal liegt eine neue Nachricht vor.',
         ['Content-Type: text/plain; charset=UTF-8']);
     return 'OK:Nachricht wurde anonym an die Meldestelle übermittelt.';
@@ -1430,7 +1456,7 @@ function hinschg_portal_handle_print_case() {
 <div>Vorgangs-ID</div><div><strong><?php echo esc_html(get_post_meta($post_id, '_hinschg_token', true)); ?></strong></div>
 <div>Mandant</div><div><?php echo esc_html($tenant ? $tenant->name . ' (' . $tid . ')' : $tid); ?></div>
 <div>Eingang</div><div><?php echo esc_html(get_the_date('d.m.Y H:i', $post)); ?></div>
-<div>Status</div><div><?php echo esc_html(hinschg_portal_get_status_label($post_id)); ?></div>
+<div>Status</div><div><?php echo hinschg_portal_case_badge(hinschg_portal_get_status($post_id), hinschg_portal_get_status_label($post_id), 'status'); ?></div>
 <div>Kategorie</div><div><?php echo esc_html($category); ?></div>
 <div>Risikoklasse</div><div><?php echo esc_html($risks[$risk_key] ?? $risks['ungeprueft']); ?></div>
 </div>
@@ -1523,8 +1549,10 @@ function hinschg_portal_save_report_meta($post_id, $post) {
     update_post_meta($post_id, '_hinschg_public_reply', $public_reply);
     update_post_meta($post_id, '_hinschg_category', $category);
     update_post_meta($post_id, '_hinschg_risk', $risk);
-    update_post_meta($post_id, '_hinschg_status_updated_at', current_time('mysql'));
-    update_post_meta($post_id, '_hinschg_status_updated_by', get_current_user_id());
+    if ($old_status !== $status) {
+        update_post_meta($post_id, '_hinschg_status_updated_at', current_time('mysql'));
+        update_post_meta($post_id, '_hinschg_status_updated_by', get_current_user_id());
+    }
     if ($old_status !== $status && in_array($status, ['abgeschlossen', 'abgelehnt'], true)) { update_post_meta($post_id, '_hinschg_closed_at', current_time('mysql')); } elseif ($old_status !== $status) { delete_post_meta($post_id, '_hinschg_closed_at'); }
     if ($old_status !== $status) { hinschg_portal_add_audit_event($post_id, 'status_changed', 'Status: ' . hinschg_portal_get_status_label($post_id), get_current_user_id()); }
     if ($old_category !== $category) { hinschg_portal_add_audit_event($post_id, 'category_changed', 'Kategorie: ' . hinschg_portal_get_category_label($category), get_current_user_id()); }
@@ -1560,11 +1588,11 @@ function hinschg_portal_admin_column_content($column, $post_id) {
             echo '–';
         }
     } elseif ($column === 'status') {
-        echo esc_html(hinschg_portal_get_status_label($post_id));
+        echo hinschg_portal_case_badge(hinschg_portal_get_status($post_id), hinschg_portal_get_status_label($post_id), 'status');
     } elseif ($column === 'category') {
         echo esc_html(hinschg_portal_get_category_label(get_post_meta($post_id, '_hinschg_category', true)));
     } elseif ($column === 'risk') {
-        $risks = hinschg_portal_risks(); $risk = get_post_meta($post_id, '_hinschg_risk', true) ?: 'ungeprueft'; echo esc_html($risks[$risk] ?? $risk);
+        $risks = hinschg_portal_risks(); $risk = get_post_meta($post_id, '_hinschg_risk', true) ?: 'ungeprueft'; echo hinschg_portal_case_badge($risk, $risks[$risk] ?? $risk, 'risk');
     } elseif ($column === 'token') {
         echo esc_html(get_post_meta($post_id, '_hinschg_token', true) ?: '–');
     }
@@ -1641,6 +1669,7 @@ function hinschg_portal_render_status_meta_box($post) {
         echo '<option value="' . esc_attr($value) . '" ' . selected($current_status, $value, false) . '>' . esc_html($label) . '</option>';
     }
     echo '</select>';
+    echo '<p class="description">Abgeschlossen und Nicht weiterverfolgt beenden die Bearbeitung des Vorgangs. Die Änderung wird mit „Status speichern“ übernommen.</p>';
 
     echo '<div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:16px">';
     echo '<div><p><label for="hinschg_category"><strong>Kategorie</strong></label></p><select id="hinschg_category" name="hinschg_category">';
@@ -1664,7 +1693,7 @@ function hinschg_portal_render_status_meta_box($post) {
     } else { echo '<p class="description">Noch keine Nachrichten.</p>'; }
     echo '<p><label for="hinschg_staff_message"><strong>Neue Nachricht an den Hinweisgeber</strong></label></p>';
     echo '<textarea id="hinschg_staff_message" name="hinschg_staff_message" rows="5" class="widefat" maxlength="5000" placeholder="Nachricht oder Rückfrage eingeben. Wird beim Aktualisieren gesendet."></textarea>';
-    echo '<p class="description">Die Nachricht erscheint nach dem Speichern in der anonymen Vorgangsabfrage.</p>';
+    echo '<p class="description">Die Nachricht wird beim Speichern ausdrücklich an das anonyme Postfach übermittelt. Für einen reinen Statuswechsel das Nachrichtenfeld leer lassen.</p>';
 
     if ($updated_at) {
         $user = $updated_by ? get_userdata($updated_by) : false;
@@ -1672,6 +1701,91 @@ function hinschg_portal_render_status_meta_box($post) {
         echo '<p class="description">Zuletzt geändert: ' . esc_html(mysql2date('d.m.Y H:i', $updated_at)) . ' durch ' . esc_html($user_name) . '</p>';
     }
 }
+
+/* Farbliche, rein informative Kennzeichnung (kein Aktionsbutton). */
+function hinschg_portal_case_badge($key, $label, $kind) {
+    $colors = $kind === 'risk' ? [
+        'ungeprueft' => ['#f1f5f9','#334155'], 'niedrig' => ['#dcfce7','#166534'],
+        'mittel' => ['#fef3c7','#92400e'], 'hoch' => ['#ffedd5','#9a3412'],
+        'kritisch' => ['#fee2e2','#991b1b'],
+    ] : [
+        'eingegangen' => ['#dbeafe','#1e40af'], 'in_pruefung' => ['#fef3c7','#92400e'],
+        'rueckfrage' => ['#ede9fe','#5b21b6'], 'abgeschlossen' => ['#dcfce7','#166534'],
+        'abgelehnt' => ['#f1f5f9','#475569'],
+    ];
+    $pair = $colors[$key] ?? ['#f1f5f9','#334155'];
+    return '<span style="display:inline-block;padding:4px 9px;border-radius:12px;font-weight:600;white-space:nowrap;background:' . esc_attr($pair[0]) . ';color:' . esc_attr($pair[1]) . '">' . esc_html($label) . '</span>';
+}
+
+function hinschg_portal_case_sort_options() {
+    return [
+        'newest' => 'Neueste zuerst', 'oldest' => 'Älteste zuerst',
+        'risk_desc' => 'Risiko: kritisch zuerst', 'risk_asc' => 'Risiko: niedrig zuerst',
+        'status_asc' => 'Status: A–Z', 'status_desc' => 'Status: Z–A',
+        'updated_desc' => 'Zuletzt bearbeitet',
+    ];
+}
+/* Fachliche Filter fuer die vertrauliche Vorgangsliste. */
+function hinschg_portal_case_list_filters() {
+    global $typenow;
+    if ($typenow !== 'hinweis' || !hinschg_is_case_contact()) return;
+    $status = isset($_GET['hinschg_status_filter']) && is_scalar($_GET['hinschg_status_filter']) ? sanitize_key(wp_unslash($_GET['hinschg_status_filter'])) : 'offen';
+    $risk = isset($_GET['hinschg_risk_filter']) && is_scalar($_GET['hinschg_risk_filter']) ? sanitize_key(wp_unslash($_GET['hinschg_risk_filter'])) : '';
+    $statuses = ['offen' => 'Offene Vorgänge', 'alle' => 'Alle Vorgänge'] + hinschg_portal_statuses();
+    echo '<label class="screen-reader-text" for="hinschg_status_filter">Bearbeitungsstatus</label><select name="hinschg_status_filter" id="hinschg_status_filter">';
+    foreach ($statuses as $key => $label) echo '<option value="' . esc_attr($key) . '" ' . selected($status, $key, false) . '>' . esc_html($label) . '</option>';
+    echo '</select>';
+    echo '<label class="screen-reader-text" for="hinschg_risk_filter">Risikoeinstufung</label><select name="hinschg_risk_filter" id="hinschg_risk_filter"><option value="">Alle Risiken</option>';
+    foreach (hinschg_portal_risks() as $key => $label) echo '<option value="' . esc_attr($key) . '" ' . selected($risk, $key, false) . '>' . esc_html($label) . '</option>';
+    echo '</select>';
+    $sort = isset($_GET['hinschg_sort']) && is_scalar($_GET['hinschg_sort']) ? sanitize_key(wp_unslash($_GET['hinschg_sort'])) : 'newest';
+    echo '<label class="screen-reader-text" for="hinschg_sort">Sortierung</label><select name="hinschg_sort" id="hinschg_sort">';
+    foreach (hinschg_portal_case_sort_options() as $key => $label) echo '<option value="' . esc_attr($key) . '" ' . selected($sort, $key, false) . '>' . esc_html($label) . '</option>';
+    echo '</select>';
+}
+add_action('restrict_manage_posts', 'hinschg_portal_case_list_filters');
+function hinschg_portal_apply_case_list_filters($query) {
+    if (!is_admin() || !$query->is_main_query() || $query->get('post_type') !== 'hinweis' || !hinschg_is_case_contact()) return;
+    $status = isset($_GET['hinschg_status_filter']) && is_scalar($_GET['hinschg_status_filter']) ? sanitize_key(wp_unslash($_GET['hinschg_status_filter'])) : 'offen';
+    $risk = isset($_GET['hinschg_risk_filter']) && is_scalar($_GET['hinschg_risk_filter']) ? sanitize_key(wp_unslash($_GET['hinschg_risk_filter'])) : '';
+    $meta = (array) $query->get('meta_query');
+    if ($status === 'offen') {
+        $meta[] = ['relation' => 'OR', ['key' => '_hinschg_status', 'value' => ['eingegangen', 'in_pruefung', 'rueckfrage'], 'compare' => 'IN'], ['key' => '_hinschg_status', 'compare' => 'NOT EXISTS']];
+    } elseif ($status !== 'alle' && isset(hinschg_portal_statuses()[$status])) {
+        $meta[] = ['key' => '_hinschg_status', 'value' => $status];
+    } elseif ($status !== 'alle') {
+        $meta[] = ['key' => '_hinschg_status', 'value' => ['eingegangen', 'in_pruefung', 'rueckfrage'], 'compare' => 'IN'];
+    }
+    if ($risk !== '' && isset(hinschg_portal_risks()[$risk])) {
+        $meta[] = ['key' => '_hinschg_risk', 'value' => $risk];
+    }
+    $query->set('meta_query', $meta);
+    $query->set('post_status', 'private');
+    $sort = isset($_GET['hinschg_sort']) && is_scalar($_GET['hinschg_sort']) ? sanitize_key(wp_unslash($_GET['hinschg_sort'])) : 'newest';
+    if (!isset(hinschg_portal_case_sort_options()[$sort])) $sort = 'newest';
+    if ($sort === 'oldest') { $query->set('orderby', 'date'); $query->set('order', 'ASC'); }
+    elseif ($sort === 'newest') { $query->set('orderby', 'date'); $query->set('order', 'DESC'); }
+    elseif ($sort === 'status_asc' || $sort === 'status_desc') {
+        $query->set('meta_key', '_hinschg_status');
+        $query->set('orderby', ['meta_value' => $sort === 'status_asc' ? 'ASC' : 'DESC', 'date' => 'DESC']);
+    } elseif ($sort === 'updated_desc') {
+        $query->set('meta_key', '_hinschg_status_updated_at');
+        $query->set('orderby', ['meta_value' => 'DESC', 'date' => 'DESC']);
+    }
+}
+add_action('pre_get_posts', 'hinschg_portal_apply_case_list_filters', 110);
+/* Risikosortierung per SQL CASE, damit keine lexikografische Reihenfolge entsteht
+   und auch unbewertete Vorgänge in der Liste bleiben. */
+function hinschg_portal_case_risk_orderby($orderby, $query) {
+    global $wpdb;
+    if (!is_admin() || !$query->is_main_query() || $query->get('post_type') !== 'hinweis' || !hinschg_is_case_contact()) return $orderby;
+    $sort = isset($_GET['hinschg_sort']) && is_scalar($_GET['hinschg_sort']) ? sanitize_key(wp_unslash($_GET['hinschg_sort'])) : '';
+    if (!in_array($sort, ['risk_asc','risk_desc'], true)) return $orderby;
+    $risk_sql = "(SELECT pm.meta_value FROM {$wpdb->postmeta} pm WHERE pm.post_id = {$wpdb->posts}.ID AND pm.meta_key = '_hinschg_risk' LIMIT 1)";
+    $rank = "CASE COALESCE($risk_sql, 'ungeprueft') WHEN 'kritisch' THEN 5 WHEN 'hoch' THEN 4 WHEN 'mittel' THEN 3 WHEN 'niedrig' THEN 2 ELSE 1 END";
+    return $rank . ($sort === 'risk_desc' ? ' DESC' : ' ASC') . ", {$wpdb->posts}.post_date DESC";
+}
+add_filter('posts_orderby', 'hinschg_portal_case_risk_orderby', 110, 2);
 
 function hinschg_portal_add_tenant_filter() {
     global $typenow;
@@ -2429,3 +2543,35 @@ add_filter('pre_delete_post', function($check, $post) {
         (int) ($GLOBALS['hinschg_retention_authorized_delete'] ?? 0) !== (int) $post->ID) return false;
     return $check;
 }, 10, 2);
+
+/* The report is an existing case, never a new submission/publication. */
+function hinschg_portal_case_submit_label($translation, $text, $domain) {
+    if (!is_admin() || !function_exists('get_current_screen')) return $translation;
+    $screen = get_current_screen();
+    if (!$screen || $screen->id !== 'hinweis' || !isset($_GET['post'])) return $translation;
+    if (in_array($text, ['Submit for Review', 'Publish', 'Update', 'Save Draft', 'Submit'], true)) {
+        return 'Änderungen speichern';
+    }
+    return $translation;
+}
+add_filter('gettext', 'hinschg_portal_case_submit_label', 20, 3);
+add_action('admin_footer-post.php', function () {
+    $screen = get_current_screen();
+    if (!$screen || $screen->id !== 'hinweis') return;
+    ?>
+    <script>
+    (function(){
+      const button = document.getElementById('publish');
+      if (!button) return;
+      const status = document.getElementById('hinschg_status');
+      const refresh = function(){
+        const terminal = status && (status.value === 'abgeschlossen' || status.value === 'abgelehnt');
+        button.value = terminal ? 'Vorgang beenden und speichern' : 'Änderungen speichern';
+        button.textContent = button.value;
+      };
+      if(status) status.addEventListener('change', refresh);
+      refresh();
+    })();
+    </script>
+    <?php
+});
