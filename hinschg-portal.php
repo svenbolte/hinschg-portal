@@ -8,8 +8,8 @@ Author URI: https://github.com/svenbolte/
 Plugin URI: https://github.com/svenbolte/hinschg-portal/
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
-Version: 1.9.18
-Stable tag: 1.9.17
+Version: 1.9.20
+Stable tag: 1.9.20
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
@@ -803,13 +803,13 @@ function hinschg_portal_enqueue_styles() {
     $custom_css = sprintf(
         '.hinschg-form{display:flex;flex-direction:column;gap:1em;padding:1.5em;background:#fff;box-shadow:0 4px 14px #0002}
 		.hinschg-form label{margin-bottom:.3em;font-weight:600}
-		.hinschg-form input[type="text"],.hinschg-form input[type="email"],.hinschg-form input[type="file"],.hinschg-form textarea{box-sizing:border-box;width:100%%;border:1px solid %1$s;font-size:1rem}
+		.hinschg-form input[type="text"],.hinschg-form input[type="file"],.hinschg-form textarea{box-sizing:border-box;width:100%%;border:1px solid %1$s;font-size:1rem}
 		.hinschg-form input:focus,.hinschg-form textarea:focus{border-color:%1$s;outline:none;box-shadow:0 0 0 3px #5553}
 		.hinschg-form details{margin-top:1em;padding:.8em 1em;border:1px solid %1$s;background:#f8fafc}
 		.hinschg-form details[open]{background:%1$s19}
 		.hinschg-portal{max-width:100%%}
 		.hinschg-portal .intro-text{margin:0 0 1.5em;color:#333;font-size:1rem;line-height:1.6;text-align:justify}
-		.hinschg-portal input[type="text"],.hinschg-portal input[type="email"],.hinschg-portal textarea{box-sizing:border-box;width:100%%;border:1px solid %1$s}
+		.hinschg-portal input[type="text"],.hinschg-portal textarea{box-sizing:border-box;width:100%%;border:1px solid %1$s}
 		.hinschg-portal textarea{min-height:140px}
 		.hinschg-portal button[type="submit"]{width:100%%}
 		.hinschg-portal details{margin-top:1em}
@@ -839,12 +839,16 @@ function hinschg_portal_enqueue_styles() {
 
 function hinschg_portal_shortcode_hinweisportal($atts, $content = '') {
     hinschg_portal_enqueue_styles();
-    $atts = shortcode_atts(['image' => 1], $atts, 'hinweisportal');
+    $atts = shortcode_atts(['image' => 1, 'id' => ''], $atts, 'hinweisportal');
     $show_image = intval($atts['image']) === 1;
-    $tenant_id = isset($_GET['mandant']) ? preg_replace('/[^0-9]/', '', $_GET['mandant']) : '';
+    // A fixed shortcode ID takes precedence over the URL parameter.
+    $tenant_id = trim((string) $atts['id']);
+    if ($tenant_id === '') {
+        $tenant_id = isset($_GET['mandant']) && is_scalar($_GET['mandant']) ? (string) wp_unslash($_GET['mandant']) : '';
+    }
     $mandant = (preg_match('/^\d{8}$/', $tenant_id)) ? hinschg_portal_get_mandant_by_tenant_id($tenant_id) : null;
     $opts = get_option(HINSCHG_PORTAL_OPTION_KEY, []);
-		$hinschginfo = 'Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken für das oben angegebene Unternehmen. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Sie können freiwillig eine anonyme Kontaktadresse hinterlassen, falls Rückfragen notwendig sind. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.';
+		$hinschginfo = 'Dieses Hinweisgeber-Portal ermöglicht eine sichere, vertrauliche und – wenn gewünscht – anonyme Meldung von Missständen, Compliance-Verstößen oder ethischen Bedenken für das oben angegebene Unternehmen. Ihre Mitteilung wird ausschließlich an die verantwortliche Stelle des oben genannten Mandanten weitergeleitet. Für Rückfragen und Rückmeldungen steht Ihnen das geschützte anonyme Postfach zur Verfügung. Bitte schildern Sie den Sachverhalt so konkret wie möglich und fügen Sie bei Bedarf relevante Dokumente hinzu.';
     ob_start();
 
 
@@ -858,7 +862,7 @@ echo hinschg_portal_public_information();
 
     if (!$mandant) {
 			echo '<div class="intro-text">'.$hinschginfo.'</div>';
-        echo '<div class="notice-error"><p>Bitte rufen Sie den Link mit einem gültigen Mandanten-Parameter auf (z. B. <code>?mandant=12345678</code>).</p></div>';
+        echo '<div class="notice-error"><p>Bitte verwenden Sie eine gültige Mandanten-ID im Shortcode (z. B. <code>[hinweisportal id="12345678"]</code>) oder im Link (<code>?mandant=12345678</code>).</p></div>';
         echo '</div>';
         return ob_get_clean();
     }
@@ -1109,7 +1113,7 @@ function hinschg_portal_find_report($mandant, $token, $verify_nonce = true) {
 
 function hinschg_portal_render_front_form($mandant, $opts) {
     $max_mb = 10;
-    // Restore non-sensitive input after upload errors; do not retain attachments or contact email.
+    // Restore non-sensitive input after upload errors; do not retain attachments.
     $retry = $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['hinschg_submit']);
     $old_subject = $retry ? sanitize_text_field(wp_unslash($_POST['subject'] ?? '')) : '';
     $old_category = $retry ? sanitize_key(wp_unslash($_POST['category'] ?? '')) : '';
@@ -1134,8 +1138,7 @@ function hinschg_portal_render_front_form($mandant, $opts) {
             <p><label>Datei anhängen (optional, max. <?php echo esc_html($max_mb); ?> MB)<br/>
                 <input type="file" name="attachment" accept=".pdf,.png,.jpg,.jpeg,.txt" /></label></p>
             <details><summary>Kontakt aufnehmen? (optional)</summary>
-                <div>Wenn Sie eine Rückmeldung wünschen, können Sie eine anonyme E-Mail-Adresse angeben. Dies ist freiwillig. Wenn Sie Ihre Identität nicht preisgeben möchten, können Sie eine E-Mail-Adresse bei einem anonymen Anbieter wie ProtonMail nutzen und diese bei der Meldestelle angeben</p>
-                <p><label>E-Mail (optional)<br/><input type="email" name="contact_email" placeholder="anonym@example.org"/></label></div>
+                <p>Für Rückfragen und Rückmeldungen nutzen Sie bitte Ihr geschütztes anonymes Postfach.</p>
             </details>
             <p><label><input type="checkbox" name="confirm" required/> Ich bestätige, dass meine Angaben nach bestem Wissen und Gewissen korrekt sind.</label></p>
             
@@ -1191,10 +1194,6 @@ function hinschg_portal_handle_front_submission($mandant, $opts) {
     $message = wp_kses_post($_POST['message'] ?? '');
     if (!$message || strlen(trim(wp_strip_all_tags($message))) < 10) {
         return ['ok' => false, 'msg' => 'Bitte hinterlegen Sie eine aussagekräftige Beschreibung (min. 10 Zeichen).'];
-    }
-    $contact_email = sanitize_email($_POST['contact_email'] ?? '');
-    if ($contact_email && !is_email($contact_email)) {
-        return ['ok' => false, 'msg' => 'Kontakt-E-Mail ist ungültig.'];
     }
 
     // Validate the upload before creating the case; do not move it into public uploads.
@@ -1257,7 +1256,6 @@ function hinschg_portal_handle_front_submission($mandant, $opts) {
         'date' => current_time('mysql'),
         'user_id' => 0,
     ]], true);
-    if ($contact_email) { add_post_meta($post_id, '_hinschg_contact_email', $contact_email, true); }
     if ($private_upload) {
         global $wpdb;
         $bytes = file_get_contents($private_upload['tmp']);
@@ -1273,10 +1271,9 @@ function hinschg_portal_handle_front_submission($mandant, $opts) {
     }
 
     hinschg_portal_add_audit_event($post_id, 'submission_details',
-        'Bei Einreichung: Kontakt-E-Mail ' . ($contact_email ? 'angegeben' : 'nicht angegeben') .
-        '; Dateianhang ' . ($private_upload ? 'eingereicht' : 'nicht eingereicht'), 0);
+        'Bei Einreichung: Dateianhang ' . ($private_upload ? 'eingereicht' : 'nicht eingereicht'), 0);
 
-    // Keine Meldungsinhalte, Tokens, Kontaktangaben oder Dateilinks per E-Mail.
+    // Keine Meldungsinhalte, Tokens oder Dateilinks per E-Mail.
     hinschg_portal_notify_contacts($mandant->tenant_id, '[' . get_bloginfo('name') . '] Neue Meldung',
         "Im geschützten Hinweisgeberportal liegt eine neue Meldung vor. Bitte melden Sie sich über den vereinbarten sicheren Verwaltungszugang an.",
         ['Content-Type: text/plain; charset=UTF-8']);
@@ -1416,7 +1413,6 @@ function hinschg_portal_handle_print_case() {
     $risk_key = get_post_meta($post_id, '_hinschg_risk', true) ?: 'ungeprueft';
     $risks = hinschg_portal_risks();
     $category = hinschg_portal_get_category_label(get_post_meta($post_id, '_hinschg_category', true));
-    $submitted_email = get_post_meta($post_id, '_hinschg_contact_email', true);
     global $wpdb;
     $submitted_files = $wpdb->get_results($wpdb->prepare(
         "SELECT filename, mime, OCTET_LENGTH(content) AS file_size FROM {$wpdb->prefix}hinschg_private_files WHERE case_id = %d ORDER BY id ASC",
@@ -1439,7 +1435,6 @@ function hinschg_portal_handle_print_case() {
 <div>Risikoklasse</div><div><?php echo esc_html($risks[$risk_key] ?? $risks['ungeprueft']); ?></div>
 </div>
 <h2>Angaben bei Einreichung</h2><div class="meta">
-<div>Optionale Kontakt-E-Mail</div><div><?php echo $submitted_email ? esc_html($submitted_email) : 'Nicht angegeben'; ?></div>
 <div>Dateianhänge</div><div><?php echo $submitted_files ? esc_html(count($submitted_files) . ' Datei(en) eingereicht') : ($legacy_attachment ? 'Älterer Medienanhang vorhanden' : 'Keine Datenbankanhänge vorhanden'); ?></div>
 </div>
 <?php if ($submitted_files) : ?><div class="box"><strong>Eingereichte Dateien:</strong><ul><?php foreach ($submitted_files as $submitted_file) : ?><li><?php echo esc_html($submitted_file->filename); ?> (<?php echo esc_html($submitted_file->mime); ?>, <?php echo esc_html(size_format((int)$submitted_file->file_size, 1)); ?>)</li><?php endforeach; ?></ul></div><?php endif; ?>
@@ -1450,68 +1445,6 @@ function hinschg_portal_handle_print_case() {
 <h2>Audit-Verlauf</h2><?php if ($audit) : foreach ($audit as $e) : $u=absint($e['user_id']??0); $user=$u?get_userdata($u):false; ?><div class="event"><div><?php echo esc_html(!empty($e['date'])?mysql2date('d.m.Y H:i',$e['date']):'–'); ?></div><div><strong><?php echo esc_html($e['label']??$e['event']??'Ereignis'); ?></strong><?php if($user): ?> <span class="muted">· <?php echo esc_html($user->display_name); ?></span><?php endif; ?></div></div><?php endforeach; else : ?><p class="muted">Für diesen Altvorgang liegen noch keine Audit-Ereignisse vor.</p><?php endif; ?>
 <p class="muted" style="margin-top:35px">Hinweis: Dieser Ausdruck dokumentiert den im Portal gespeicherten Bearbeitungsstand. Er ersetzt keine rechtliche Einzelfallprüfung.</p>
 </body></html><?php exit;
-}
-
-/* ===================== Datenschutz (Export/Eraser Stubs) ===================== */
-
-function hinschg_portal_register_privacy_exporter($exporters) {
-    $exporters['hinschg-portal'] = [
-        'exporter_friendly_name' => __('HinSchG Portal', 'hinschg-portal'),
-        'callback' => function($email, $page) {
-            // Wir speichern keine IPs oder personenbezogenen Daten außer ggf. freiwilliger E-Mail.
-            $data = [];
-            $query = new WP_Query([
-                'post_type' => 'hinweis',
-                'post_status' => 'private',
-                'posts_per_page' => 100,
-                'meta_query' => [
-                    [
-                        'key' => '_hinschg_contact_email',
-                        'value' => $email,
-                        'compare' => '=',
-                    ]
-                ]
-            ]);
-            foreach ($query->posts as $p) {
-                $data[] = [
-                    'group_id' => 'hinschg-portal',
-                    'group_label' => __('HinSchG Portal', 'hinschg-portal'),
-                    'item_id' => 'hinweis-' . $p->ID,
-                    'data' => [
-                        [ 'name' => 'Post-ID', 'value' => $p->ID ],
-                        [ 'name' => 'Betreff', 'value' => get_the_title($p) ],
-                        [ 'name' => 'Text', 'value' => wp_strip_all_tags($p->post_content) ],
-                        [ 'name' => 'Vorgangs-ID', 'value' => get_post_meta($p->ID, '_hinschg_token', true) ],
-                    ]
-                ];
-            }
-            return [ 'data' => $data, 'done' => true ];
-        }
-    ];
-    return $exporters;
-}
-
-function hinschg_portal_register_privacy_eraser($erasers) {
-    $erasers['hinschg-portal'] = [
-        'eraser_friendly_name' => __('HinSchG Portal', 'hinschg-portal'),
-        'callback' => function($email, $page) {
-            $query = new WP_Query([
-                'post_type' => 'hinweis',
-                'post_status' => 'private',
-                'posts_per_page' => 100,
-                'meta_query' => [
-                    [ 'key' => '_hinschg_contact_email', 'value' => $email, 'compare' => '=' ]
-                ]
-            ]);
-            $items_removed = false;
-            foreach ($query->posts as $p) {
-                delete_post_meta($p->ID, '_hinschg_contact_email');
-                $items_removed = true;
-            }
-            return [ 'items_removed' => $items_removed, 'items_retained' => false, 'messages' => [], 'done' => true ];
-        }
-    ];
-    return $erasers;
 }
 
 function hinschg_portal_statuses() {
@@ -1612,7 +1545,6 @@ function hinschg_portal_admin_columns($columns) {
             $columns_new['category'] = __('Kategorie', 'hinschg-portal');
             $columns_new['risk'] = __('Risiko', 'hinschg-portal');
             $columns_new['token'] = __('Vorgangs-ID', 'hinschg-portal');
-            $columns_new['contact'] = __('Kontakt (freiw.)', 'hinschg-portal');
         }
     }
     return $columns_new;
@@ -1635,8 +1567,6 @@ function hinschg_portal_admin_column_content($column, $post_id) {
         $risks = hinschg_portal_risks(); $risk = get_post_meta($post_id, '_hinschg_risk', true) ?: 'ungeprueft'; echo esc_html($risks[$risk] ?? $risk);
     } elseif ($column === 'token') {
         echo esc_html(get_post_meta($post_id, '_hinschg_token', true) ?: '–');
-    } elseif ($column === 'contact') {
-        echo esc_html(get_post_meta($post_id, '_hinschg_contact_email', true) ?: '–');
     }
 }
 
@@ -1663,7 +1593,6 @@ function hinschg_portal_register_meta_boxes() {
 function hinschg_portal_render_report_meta_box($post) {
     $tid = get_post_meta($post->ID, '_hinschg_tenant_id', true);
     $token = get_post_meta($post->ID, '_hinschg_token', true);
-    $contact = get_post_meta($post->ID, '_hinschg_contact_email', true);
     $att_id = (int) get_post_meta($post->ID, '_hinschg_attachment_id', true);
 
     echo '<p><strong>Mandant:</strong> ' . esc_html($tid ?: '–');
@@ -1675,7 +1604,6 @@ function hinschg_portal_render_report_meta_box($post) {
     }
     echo '</p>';
     echo '<p><strong>Vorgangs-ID:</strong> <code>' . esc_html($token ?: '–') . '</code></p>';
-    echo '<p><strong>Kontakt (freiwillig):</strong> ' . esc_html($contact ?: '–') . '</p>';
     $print_url = wp_nonce_url(add_query_arg(['action' => 'hinschg_print_case', 'post' => $post->ID], admin_url('admin-post.php')), 'hinschg_print_case_' . $post->ID);
     echo '<p><a class="button button-primary" href="' . esc_url($print_url) . '" target="_blank" rel="noopener">Compliance-Nachweis drucken / PDF</a></p>';
 
@@ -1872,6 +1800,18 @@ function hinschg_portal_render_legal_page() {
         <p><label for="hinschg-example-url"><strong>Beispiel-URL zum Kopieren:</strong></label></p>
         <p><input id="hinschg-example-url" type="text" readonly style="width:100%;max-width:650px" value="<?php echo esc_attr(add_query_arg('mandant', '12345678', home_url('/hinweis/'))); ?>" onclick="this.select()" aria-label="Beispiel-Portal-Link" /></p>
         <p><em>12345678 ist eine Beispiel-ID. Den tatsächlichen Portal-Link finden Sie bei Ihrem Mandanten.</em></p>
+        <h2>Shortcode auf eigenen WordPress-Seiten</h2>
+        <p>Sie können das Hinweisgeberportal zusätzlich auf einer beliebigen eigenen WordPress-Seite über einen Shortcode einbinden. Die Mandanten-ID besteht aus genau acht Ziffern.</p>
+        <ul style="list-style-type:disc;margin-left:2em">
+            <li><code>[hinweisportal]</code> – liest die Mandanten-ID aus dem URL-Parameter <code>?mandant=12345678</code>.</li>
+            <li><code>[hinweisportal id="12345678"]</code> – öffnet den angegebenen Mandanten direkt auf dieser Seite, ohne URL-Parameter.</li>
+            <li><code>[hinweisportal id="12345678" image="0"]</code> – öffnet den Mandanten direkt und blendet das Titelbild aus.</li>
+        </ul>
+        <p><strong>Priorität:</strong> Eine im Shortcode angegebene <code>id</code> hat Vorrang vor dem URL-Parameter <code>mandant</code>. Ist keine gültige Mandanten-ID hinterlegt oder wird der Mandant nicht gefunden, erscheint eine Fehlermeldung. Der Parameter <code>image="0"</code> ist optional; standardmäßig wird das Titelbild angezeigt.</p>
+        <h2>Anonyme Kommunikation und Datenschutz</h2>
+        <p>Das Meldeformular fragt keine Kontakt-E-Mail-Adresse des Hinweisgebers ab. Rückfragen und Rückmeldungen erfolgen über das geschützte anonyme Postfach mit Vorgangs-ID und zugehörigem Zugang. Hinweisgeber sollten ihre Zugangsdaten sicher aufbewahren, um später erneut auf den Vorgang zugreifen zu können.</p>
+        <p>Die internen E-Mail-Benachrichtigungen an die für den Mandanten zuständigen Empfänger bleiben davon unberührt; sie dienen nicht als Kontaktweg zum anonymen Hinweisgeber.</p>
+        <p><strong>Hinweis für Updates:</strong> Bereits vor der Umstellung gespeicherte Kontakt-E-Mail-Adressen werden durch das Plugin-Update nicht automatisch gelöscht. Bestandsdaten und historische Audit-Einträge sind unter Beachtung der geltenden Aufbewahrungs- und Löschpflichten gesondert zu prüfen.</p>
         <p>Datenschutz: Es werden vom Formular keine IP-Adressen oder Cookies gespeichert. Serverseitige Logs können unabhängig davon IPs erfassen – bitte Webserver entsprechend konfigurieren.</p>
         <h2>Hintergrund des Hinweisgeberschutzgesetzes (HinSchG)</h2>
         <p>
@@ -2216,16 +2156,7 @@ if (is_admin()) {
         );
     }
 
-    if ($pagenow === 'export-personal-data.php' || wp_doing_ajax()) {
-        add_filter(
-            'wp_privacy_personal_data_exporters',
-            'hinschg_portal_register_privacy_exporter'
-        );
-        add_filter(
-            'wp_privacy_personal_data_erasers',
-            'hinschg_portal_register_privacy_eraser'
-        );
-    }
+
 } else {
     add_shortcode(
         'hinweisportal',

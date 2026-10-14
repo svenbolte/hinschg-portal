@@ -1,3 +1,5 @@
+Version 1.9.20: Adminbereich „Recht / Anleitung“ um Shortcode mit optionaler Mandanten-ID, Bildoption, Prioritätsregel sowie Hinweise zur anonymen Kommunikation und zu Bestandsdaten ergänzt.
+
 Version 1.9.17: Mandantenformular auf Desktop zweispaltig und mobil einspaltig. Hinweisbox nur beim Neuanlegen.
 Version 1.9.15: Die Hilfe zur Ansprechpartner-Zuweisung erscheint bei der Neuanlage wieder als sichtbare Hinweisbox statt als Details-Klappbereich.
 
@@ -15,7 +17,7 @@ Contributors: Sven Bolte
 Author: ChatGPT and PBMod
 Tags: hinweisgeberschutz, whistleblower, compliance, mandanten, portal, datenschutz
 License: Commercial License (includes third-party Open Source components; see license.txt)
-Version: 1.9.8
+Version: 1.9.20
 Requires at least: 6.0
 Tested up to: 6.8.3
 Requires PHP: 8.2
@@ -26,7 +28,7 @@ Ein Multi-Mandanten-Hinweisgeberschutz-Portal gemäß HinSchG (Hinweisgeberschut
 
 Das HinSchG Portal (Multi-Mandant) ist ein WordPress-Plugin zur Umsetzung der Anforderungen des Hinweisgeberschutzgesetzes für mehrere Organisationen (Mandanten).
 
-* Mandantenverwaltung (ID, Name, Ort, Kontakt-E-Mail)
+* Mandantenverwaltung (ID, Name, Ort)
 * Frontend-Formular für anonyme Hinweise (Shortcode [hinweisportal])
 * Upload von Anhängen (optional)
 * Automatische E-Mail-Benachrichtigung an den Mandanten
@@ -45,17 +47,24 @@ Das HinSchG Portal (Multi-Mandant) ist ein WordPress-Plugin zur Umsetzung der An
 3. Im Admin-Menü „HinSchG Portal“ öffnen.
 4. Mandanten anlegen. Die automatisch angelegte Seite ist unter `/hinweis/` erreichbar.
 
-```markdown
 **Beispiel-Link für Mandanten:** `https://www.domain.de/hinweis/?mandant=12345678`
 
 
 == Nutzung ==
 
-``` **Shortcode:** [hinweisportal] ```
+**Shortcode (Mandanten-ID optional):**
 
-*Erwartet den URL-Parameter `mandant=XXXXXXXX` (8-stellige Nummer).*
+- `[hinweisportal]` – verwendet die 8-stellige Mandanten-ID aus dem URL-Parameter `?mandant=12345678`.
+- `[hinweisportal id="12345678"]` – bindet den Mandanten direkt auf einer beliebigen WordPress-Seite ein, ohne URL-Parameter.
+- `[hinweisportal id="12345678" image="0"]` – wie oben, aber ohne Titelbild.
 
-**E-Mail-Benachrichtigung:**
+Bei gesetzter `id` hat die Shortcode-ID Vorrang vor einem eventuell vorhandenen URL-Parameter. Eine ungültige ID führt zu einer Fehlermeldung statt zur Auswahl eines anderen Mandanten.
+
+**Anonyme Kommunikation und Bestandsdaten:**
+* Das Meldeformular erhebt keine Kontakt-E-Mail-Adresse des Hinweisgebers. Rückfragen und Rückmeldungen erfolgen ausschließlich über das geschützte anonyme Postfach mit Vorgangs-ID und Zugang. Zugangsdaten bitte sicher aufbewahren.
+* Bereits vor der Umstellung gespeicherte Kontakt-E-Mail-Adressen werden durch das Update nicht automatisch gelöscht. Bestandsdaten und historische Audit-Einträge sind unter Beachtung der Aufbewahrungs- und Löschpflichten gesondert zu prüfen.
+
+**Interne E-Mail-Benachrichtigung:**
 * Wird an die in der Mandantenverwaltung hinterlegte Adresse gesendet.
 * Enthält den Hinweistext, eine Vorgangs-ID und – falls vorhanden – einen temporären Download-Link zum Anhang (48 h gültig).
 
@@ -107,7 +116,7 @@ Der Anbieter haftet nur bei Vorsatz, grober Fahrlässigkeit sowie bei Verletzung
 == Screenshots ==
 
 1. **Frontend-Formular:** modernes Hinweisformular mit Betreff, Beschreibung, Upload und optionaler Kontaktmöglichkeit.
-2. **Admin-Bereich:** Mandantenverwaltung (ID, Name, Ort, Kontakt-E-Mail).
+2. **Admin-Bereich:** Mandantenverwaltung (ID, Name, Ort).
 3. **Hinweisübersicht:** private Beiträge mit Metadaten (Mandant, Vorgangs-ID, Upload).
 
 == Changelog ==
@@ -238,7 +247,11 @@ Version 1.9.7: Private Dateianhaenge in der Datenbank, ohne Konfiguration. Neue 
 Version 1.9.7: Upload-Typpruefung fuer PDF/PNG/JPG/TXT verbessert; bei Formularfehlern bleiben Betreff, Kategorie und Beschreibung erhalten. Dateianhaenge muessen erneut ausgewaehlt werden.
 
 == Version 1.9.8 ==
-Der Compliance-Nachweis dokumentiert die bei Einreichung hinterlegte optionale Kontakt-E-Mail und Datenbankanhänge (Dateiname, Typ, Größe). Neue Vorgänge protokollieren zusätzlich im Audit-Verlauf, ob E-Mail und Anhang eingereicht wurden. Ältere Vorgänge werden aus gespeicherten Daten dargestellt; nicht mehr vorhandene Angaben lassen sich nicht rekonstruieren.
+Der Compliance-Nachweis dokumentiert Datenbankanhänge (Dateiname, Typ, Größe). Neue Vorgänge protokollieren im Audit-Verlauf, ob ein Anhang eingereicht wurde. Ältere Vorgänge werden aus gespeicherten Daten dargestellt; nicht mehr vorhandene Angaben lassen sich nicht rekonstruieren.
 
 = 1.9.18 =
 * Fristenübersicht unter dem tatsächlichen HinSchG-Portal-Administrationsmenü registriert; Hinweislink korrigiert.
+
+== Update-Hinweis 1.9.19 ==
+
+Die freiwillige Kontaktadresse des Hinweisgebers wurde aus Formular, Verarbeitung, Administration und Nachweis entfernt. Rückfragen laufen ausschließlich über das anonyme Postfach. Bereits in früheren Versionen gespeicherte Kontaktadressen werden durch das Update nicht automatisch gelöscht; sie sind bei Bedarf nach Prüfung der Aufbewahrungspflichten gesondert aus den WordPress-Postmetadaten (`_hinschg_contact_email`) zu bereinigen. Historische Audit-Einträge bleiben erhalten.
