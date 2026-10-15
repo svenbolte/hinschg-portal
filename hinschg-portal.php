@@ -847,7 +847,7 @@ function hinschg_portal_enqueue_styles() {
 		.hinschg-portal details{margin-top:1em}
 		.notice-success{padding:.5em;border-left:4px solid #22c55e;color:#14532d;background:#e6ffed}
 		.notice-error{padding:.5em;border-left:4px solid #ef4444;color:#7f1d1d;background:#fee2e2}
-		.hinschg-featured{display:block;width:100%%;max-height:260px;margin:0 0 .75rem;object-fit:contain;background:#fff}
+		.hinschg-featured{display:block;width:100%%;height:auto;max-height:none;margin:0 0 .75rem;object-fit:contain;background:#fff}
 		.hinschg-portal .mandant-header{display:flex;align-items:center;gap:1rem;margin:1em 0 1rem;padding:0}
 		.hinschg-portal img.mandant-logo{flex-shrink:0;width:auto;max-width:200px;height:50px;max-height:100px;padding:4px;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain;background:#fff}
 		.hinschg-portal .mandant-text-wrapper{flex-grow:1;padding:6px 12px;border:1px solid %1$s19;border-radius:12px;background:linear-gradient(90deg,%1$s40,%1$s16);box-shadow:0 2px 6px #ccc8;text-align:left}
@@ -889,7 +889,7 @@ function hinschg_portal_shortcode_hinweisportal($atts, $content = '') {
     ob_start();
 
 
-echo hinschg_portal_public_information();
+// Hinweise zum Meldeverfahren sind im Detailbereich zum Hinweisgeberschutzgesetz integriert.
 
     echo '<div class="hinschg-portal">';
     if ($show_image) {
@@ -944,13 +944,20 @@ echo hinschg_portal_public_information();
     
 		?>
 		<details class="hinweisgesetz-info" style="margin-bottom:1.5em;">
-			<summary>Was ist das Hinweisgeberschutzgesetz?</summary>
-			<div>
-				<p>Das <strong>Hinweisgeberschutzgesetz (HinSchG)</strong> schützt Personen, die Missstände oder Rechtsverstöße in Unternehmen oder Behörden melden – sogenannte Hinweisgeber oder Whistleblower.</p>
-				<p>Es verpflichtet Organisationen ab einer bestimmten Größe, eine <strong>interne Meldestelle</strong> einzurichten, über die Mitarbeitenden oder externe Personen sicher und vertraulich Hinweise abgeben können.</p>
-				<p><em>Kurz gesagt:</em> Dieses Gesetz sorgt dafür, dass Hinweise auf Fehlverhalten vertraulich behandelt werden und Hinweisgeber vor Benachteiligung oder Repressalien geschützt sind.</p>
-			</div>
-		</details>
+            <summary>Was ist das Hinweisgeberschutzgesetz?</summary>
+            <div>
+                <p>Das <strong>Hinweisgeberschutzgesetz (HinSchG)</strong> soll Menschen schützen, die im Zusammenhang mit ihrer beruflichen Tätigkeit Informationen über bestimmte mögliche Rechtsverstöße erhalten und diese melden. Solche Hinweise können dazu beitragen, Missstände frühzeitig zu erkennen und angemessen zu prüfen.</p>
+                <p><strong>Welche Sachverhalte können gemeldet werden?</strong><br>Hierzu können beispielsweise Hinweise auf Korruption, Betrug, Verstöße gegen Vorschriften zum Datenschutz oder zur IT-Sicherheit sowie bestimmte Verstöße gegen Arbeitsschutz- und Umweltvorschriften gehören. Nicht jede persönliche Unzufriedenheit oder jeder betriebliche Konflikt fällt automatisch in den Anwendungsbereich des Gesetzes. Entscheidend sind die Umstände und die gesetzlichen Voraussetzungen.</p>
+                <p><strong>Wer kann Hinweise geben?</strong><br>Insbesondere Beschäftigte, ehemalige Beschäftigte, Bewerbende sowie weitere Personen, die Informationen im beruflichen Zusammenhang erlangt haben, können als hinweisgebende Personen in Betracht kommen.</p>
+                <p><strong>Wie funktioniert eine Meldung?</strong><br>Über dieses Portal können Sie einen Sachverhalt möglichst konkret schildern und gegebenenfalls Unterlagen übermitteln. Die zuständige Meldestelle prüft den Eingang und entscheidet, welche weiteren Schritte erforderlich und zulässig sind. Nach dem HinSchG ist grundsätzlich innerhalb von sieben Tagen eine Eingangsbestätigung und innerhalb der gesetzlich vorgesehenen Frist eine Rückmeldung zu Folgemaßnahmen vorgesehen. Eine Rückmeldung bedeutet nicht zwingend, dass die Prüfung bereits abgeschlossen ist.</p>
+                <p><strong>Wie wird Ihre Identität geschützt?</strong><br>Für Meldungen gelten gesetzliche Vertraulichkeitsanforderungen. Informationen über die Identität hinweisgebender und betroffener Personen dürfen grundsätzlich nur befugten Personen zugänglich gemacht werden. Das Gesetz sieht jedoch bestimmte Ausnahmen vor, etwa im Zusammenhang mit behördlichen oder gerichtlichen Verfahren. Bitte vermeiden Sie unnötige personenbezogene Angaben über Dritte.</p>
+                <p><strong>Schutz vor Benachteiligungen</strong><br>Das Gesetz verbietet unter bestimmten Voraussetzungen Repressalien aufgrund einer geschützten Meldung, etwa berufliche Benachteiligungen. Ob der gesetzliche Schutz im Einzelfall greift, hängt unter anderem vom Inhalt der Meldung und den Umständen ihrer Abgabe ab. Wissentlich unrichtige Meldungen sind nicht geschützt und können rechtliche Folgen haben.</p>
+                <p><strong>Anonyme Hinweise und Rückfragen</strong><br>Dieses Portal ermöglicht eine Meldung ohne Angabe Ihres Namens. Bewahren Sie die nach dem Absenden angezeigte Vorgangs-ID sorgfältig auf: Sie benötigen sie, um den Bearbeitungsstand einzusehen und gegebenenfalls Rückfragen über das Portal zu beantworten. Auch bei einer Meldung ohne Namensangabe können Angaben im Text oder in Dateien Rückschlüsse auf die Identität zulassen.</p>
+                <p><strong>Fristen und Datenschutz</strong><br>Eine Eingangsbestätigung ist grundsätzlich innerhalb von sieben Tagen vorgesehen. Die Rückmeldung erfolgt grundsätzlich innerhalb von drei Monaten nach der Eingangsbestätigung. Die Verarbeitung personenbezogener Daten richtet sich nach den geltenden Datenschutzvorschriften; Informationen zur verantwortlichen Stelle und zu Ihren Datenschutzrechten stellt der jeweilige Betreiber bereit.</p>
+                <p><strong>Weitere Meldewege</strong><br>Neben internen Meldestellen können je nach Sachverhalt zuständige externe Meldestellen genutzt werden, beispielsweise die <a href="https://www.bundesjustizamt.de/DE/MeldestelledesBundes/MeldestelledesBundes_node.html" target="_blank" rel="noopener noreferrer">externe Meldestelle des Bundes beim Bundesamt für Justiz</a>. Informationen zur Verarbeitung personenbezogener Daten finden Sie in den Datenschutzhinweisen des jeweiligen Betreibers.</p>
+                <p><em>Diese Informationen dienen der allgemeinen Orientierung und ersetzen keine rechtliche Prüfung des Einzelfalls.</em></p>
+            </div>
+        </details>
 		<?php
 
     // Handle submission
@@ -1427,7 +1434,7 @@ function hinschg_portal_handle_reporter_message($mandant, $token) {
 
 function hinschg_portal_handle_print_case() {
     $post_id = isset($_GET['post']) ? absint($_GET['post']) : 0;
-    if (!$post_id || !current_user_can('edit_post', $post_id)) { wp_die(__('Keine Berechtigung.', 'hinschg-portal')); }
+    if (!$post_id || get_post_type($post_id) !== 'hinweis' || !(current_user_can('edit_post', $post_id) || hinschg_can_access_case($post_id))) { wp_die(__('Keine Berechtigung.', 'hinschg-portal'), '', ['response' => 403]); }
     check_admin_referer('hinschg_print_case_' . $post_id);
     $post = get_post($post_id);
     if (!$post || $post->post_type !== 'hinweis') { wp_die(__('Vorgang nicht gefunden.', 'hinschg-portal')); }
@@ -2151,6 +2158,15 @@ function hinschg_contact_backend_guard() {
     }
     if ($pagenow === 'admin.php' && in_array($page, ['hinschg-cases', 'hinschg-fristen'], true)) $allowed = true;
     if ($pagenow === 'profile.php') $allowed = true;
+    // Allow only the dedicated print endpoint through the backend navigation guard.
+    // The print handler independently checks case access and the request nonce.
+    if ($pagenow === 'admin-post.php') {
+        $action = isset($_REQUEST['action']) ? sanitize_key(wp_unslash($_REQUEST['action'])) : '';
+        $id = isset($_GET['post']) ? absint($_GET['post']) : 0;
+        if ($action === 'hinschg_print_case' && $id && get_post_type($id) === 'hinweis' && hinschg_can_access_case($id)) {
+            $allowed = true;
+        }
+    }
     if ($allowed) return;
     if ($pagenow === 'index.php' || $pagenow === 'admin.php' && $page === '') {
         wp_safe_redirect(admin_url('admin.php?page=hinschg-cases')); exit;
