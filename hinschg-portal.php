@@ -176,6 +176,7 @@ function hinschg_portal_register_admin_menu() {
     add_submenu_page('hinschg-portal', __('Mandanten', 'hinschg-portal'), __('Mandanten', 'hinschg-portal'), 'manage_options', 'hinschg-portal', 'hinschg_portal_render_mandanten_page');
 
     // Eine einzige Mandanten-Seite: Hauptmenue und Untermenue verwenden denselben Slug.
+    add_submenu_page('hinschg-portal', 'Aushangschild', 'Aushangschild', 'manage_options', 'hinschg-aushang', 'hinschg_portal_render_aushang_page');
     hinschg_portal_register_legal_page();
 }
 
@@ -660,6 +661,7 @@ function hinschg_portal_render_mandanten_page() {
                     <td data-colname="Webseite"><?php echo !empty($m->website) ? '<a href="' . esc_url($m->website) . '" target="_blank">' . esc_html(parse_url($m->website, PHP_URL_HOST)) . '</a>' : '–'; ?></td>
                     <td data-colname="Aktionen">
                         <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-portal', 'edit_data'=>$m->tenant_id], admin_url('admin.php'))); ?>">Bearbeiten</a> 
+                        <a class="button button-small" href="<?php echo esc_url(add_query_arg(['page'=>'hinschg-aushang','tenant'=>$m->tenant_id], admin_url('admin.php'))); ?>">Aushangschild (PNG)</a>
                         <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" onsubmit="return confirm('<?php _e('Diesen Mandanten löschen? Alle Hinweise bleiben erhalten.', 'hinschg-portal'); ?>');" style="display:inline;">
                             <input type="hidden" name="action" value="hinschg_delete_mandant" />
                             <input type="hidden" name="tenant_id" value="<?php echo esc_attr($m->tenant_id); ?>" />
@@ -2192,6 +2194,38 @@ add_filter('woocommerce_prevent_admin_access', function($prevent) {
 /* WordPress can be configured to redirect these users via other login flows.
    The backend guard below continues to restrict which admin screens they may use. */
 add_filter('show_admin_bar', function($show) { return hinschg_is_contact_only() ? false : $show; });
+
+
+/* A4-Aushang: lokaler QR-Encoder, nur im WordPress-Admin geladen. */
+function hinschg_portal_render_aushang_page() {
+    if (!current_user_can('manage_options')) wp_die('Keine Berechtigung.', '', ['response'=>403]);
+    global $wpdb;
+    $tenants = $wpdb->get_results("SELECT * FROM " . $wpdb->prefix . "hinschg_mandanten ORDER BY name ASC");
+    $selected = isset($_GET['tenant']) ? sanitize_text_field(wp_unslash($_GET['tenant'])) : '';
+    $tenant = null;
+    foreach ((array)$tenants as $candidate) {
+        if ((string)$candidate->tenant_id === (string)$selected) { $tenant = $candidate; break; }
+    }
+    echo '<div class="wrap"><h1>HinSchG-Aushangschild</h1><p>Kompaktes Schild im Querformat als PNG herunterladen. QR-Code und Link fuehren zum ausgewaehlten Mandantenportal.</p>';
+    echo '<form method="get"><input type="hidden" name="page" value="hinschg-aushang"><label for="hinschg-tenant">Mandant: </label> <select name="tenant" id="hinschg-tenant">';
+    echo '<option value="">Bitte auswaehlen</option>';
+    foreach ((array)$tenants as $item) echo '<option value="'.esc_attr($item->tenant_id).'" '.selected((string)$selected,(string)$item->tenant_id,false).'>'.esc_html($item->name).'</option>';
+    echo '</select> <button class="button">Anzeigen</button></form>';
+    if (!$tenant) { echo '</div>'; return; }
+    $url = add_query_arg('mandant', $tenant->tenant_id, home_url('/hinweis/'));
+    $data = [
+        'url'=>$url, 'tenant'=>$tenant->name,
+        'blogname'=>get_bloginfo('name'), 'description'=>get_bloginfo('description'),
+        'blogurl'=>get_bloginfo('url'),
+        'accent'=>sanitize_hex_color(get_theme_mod('link-color', '#888888')) ?: '#888888'
+    ];
+    echo '<p><strong>Portal-Link:</strong> <a href="'.esc_url($url).'" target="_blank" rel="noopener noreferrer">'.esc_html($url).'</a></p>';
+    echo '<p id="hinschg-aushang-status" role="status">Schild wird vorbereitet …</p><p><button type="button" class="button button-primary" id="hinschg-download" disabled>Schild als PNG herunterladen</button></p>';
+    echo '<canvas id="hinschg-aushang-canvas" width="1400" height="940" style="display:block;width:min(100%,1000px);height:auto;border:1px solid #cbd5e1;background:white;box-shadow:0 8px 30px #0002" aria-label="Vorschau des Aushangs"></canvas>';
+    echo '<script>window.hinschgAushangData='.wp_json_encode($data, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT).';</script>';
+    echo '<script src="'.esc_url(plugins_url('qr-local.js', __FILE__)).'"></script>';
+    echo '<script src="'.esc_url(plugins_url('aushang.js', __FILE__)).'"></script></div>';
+}
 
 /* Plugin-Hooks kontextabhängig registrieren. */
 register_activation_hook(__FILE__, 'hinschg_portal_activate');
